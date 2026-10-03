@@ -17,3 +17,27 @@ jobs:
   dco:
     if: github.event_name == 'pull_request'
     uses: kramahq/.github/.github/workflows/dco.yml@main
+  # The same Store contract suite runs against hosted Postgres (PGlite is covered by the main matrix).
+  store-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: krama
+          POSTGRES_DB: krama
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      KRAMA_TEST_POSTGRES_URL: postgres://postgres:krama@localhost:5432/krama
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm -F @kramahq/store test

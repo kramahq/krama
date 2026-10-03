@@ -238,6 +238,43 @@ export function storeContract(h: Harness, make: () => Store | Promise<Store>): v
       });
     });
 
+    describe('artifact catalog', () => {
+      const art = (id: string, over: object = {}) =>
+        ({
+          id,
+          runId: 'run_1',
+          phaseId: 'p1',
+          name: 'a.md',
+          type: 'doc',
+          mediaType: 'text/markdown',
+          size: 1,
+          sha256: 'x',
+          version: 1,
+          status: 'draft',
+          producer: actor,
+          renditions: [],
+          createdAt: at,
+          links: {},
+          ...over,
+        }) as never;
+      it('upserts, reads back, lists by run with filters and finds the superseding version', async () => {
+        const s = await make();
+        await s.artifacts.put(art('art_1'));
+        await s.artifacts.put(
+          art('art_2', { phaseId: 'p2', type: 'patch', supersedes: 'art_1', version: 2 }),
+        );
+        await s.artifacts.put(art('art_3', { runId: 'run_2' }));
+        await s.artifacts.put(art('art_1', { status: 'superseded' }));
+        expect((await s.artifacts.get('art_1'))?.status).toBe('superseded');
+        expect(await s.artifacts.get('art_nope')).toBeUndefined();
+        expect((await s.artifacts.listByRun('run_1')).map((a) => a.id)).toEqual(['art_1', 'art_2']);
+        expect(await s.artifacts.listByRun('run_1', { phaseId: 'p2' })).toHaveLength(1);
+        expect(await s.artifacts.listByRun('run_1', { type: 'doc' })).toHaveLength(1);
+        expect((await s.artifacts.findSuperseding('art_1'))?.id).toBe('art_2');
+        expect(await s.artifacts.findSuperseding('art_2')).toBeUndefined();
+      });
+    });
+
     describe('transactions', () => {
       it('commits on success and rolls back everything on failure', async () => {
         const s = await make();
@@ -262,6 +299,29 @@ export function storeContract(h: Harness, make: () => Store | Promise<Store>): v
         );
         expect(await s.runs.get('run_bad')).toBeUndefined();
         expect((await s.audit.list({ action: 'x' })).items).toHaveLength(0);
+        await rejects(
+          h,
+          s.transaction(async (tx) => {
+            await tx.artifacts.put({
+              id: 'art_rb',
+              runId: 'run_1',
+              name: 'a',
+              type: 't',
+              mediaType: 'm',
+              size: 1,
+              sha256: 'x',
+              version: 1,
+              status: 'draft',
+              producer: actor,
+              renditions: [],
+              createdAt: at,
+              links: {},
+            } as never);
+            throw new Error('boom2');
+          }),
+          'boom2',
+        );
+        expect(await s.artifacts.get('art_rb')).toBeUndefined();
       });
     });
   });

@@ -15,6 +15,7 @@ import {
   VersionConflictError,
   type AgentGateway,
   type AgentRef,
+  type ArtifactCatalog,
   type ArtifactContent,
   type ArtifactStore,
   type AuditLog,
@@ -204,6 +205,44 @@ class MemSteps implements StepRepository {
   }
 }
 
+class MemCatalog implements ArtifactCatalog {
+  private m = new Map<string, Artifact>();
+  snapshot() {
+    return new Map(this.m);
+  }
+  restore(s: Map<string, Artifact>) {
+    this.m = new Map(s);
+  }
+  async put(a: Artifact) {
+    this.m.set(a.id, structuredClone(a));
+  }
+  async get(id: string) {
+    const a = this.m.get(id);
+    return a ? structuredClone(a) : undefined;
+  }
+  async findSuperseding(id: string) {
+    const a = [...this.m.values()].find((x) => x.supersedes === id);
+    return a ? structuredClone(a) : undefined;
+  }
+  async listByRun(
+    runId: string,
+    f: { phaseId?: string; type?: string; status?: Artifact['status'] } = {},
+  ) {
+    return [...this.m.values()]
+      .filter(
+        (a) =>
+          a.runId === runId &&
+          (!f.phaseId || a.phaseId === f.phaseId) &&
+          (!f.type || a.type === f.type) &&
+          (!f.status || a.status === f.status),
+      )
+      .sort((a, b) =>
+        a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt < b.createdAt ? -1 : 1,
+      )
+      .map((a) => structuredClone(a));
+  }
+}
+
 class MemProjects implements ProjectRepository {
   readonly map = new VersionedMap<Project>();
   async get(id: string) {
@@ -250,6 +289,7 @@ export class InMemoryStore implements Store {
   readonly runs = new MemRuns();
   readonly decisions = new MemDecisions();
   readonly steps = new MemSteps();
+  readonly artifacts = new MemCatalog();
   readonly projects = new MemProjects();
   readonly audit = new MemAudit();
   readonly usage = new MemUsage();
@@ -262,6 +302,7 @@ export class InMemoryStore implements Store {
       d: this.decisions.map.snapshot(),
       s: this.steps.map.snapshot(),
       p: this.projects.map.snapshot(),
+      c: this.artifacts.snapshot(),
       a: this.audit.entries.length,
       u: this.usage.entries.length,
     };
@@ -273,6 +314,7 @@ export class InMemoryStore implements Store {
       this.decisions.map.restore(snap.d);
       this.steps.map.restore(snap.s);
       this.projects.map.restore(snap.p);
+      this.artifacts.restore(snap.c);
       this.audit.entries.length = snap.a;
       this.usage.entries.length = snap.u;
       throw e;
