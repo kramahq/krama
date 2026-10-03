@@ -91,7 +91,14 @@ importers:
         specifier: ^6.0.6
         version: 6.0.6
 
-  packages/artifacts-fs: {}
+  packages/artifacts-fs:
+    dependencies:
+      '@kramahq/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@kramahq/engine':
+        specifier: workspace:*
+        version: link:../engine
 
   packages/builder: {}
 
