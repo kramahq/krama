@@ -32,5 +32,14 @@ export const MIGRATIONS: Migration[] = [
       "CREATE INDEX \"steps_run_idx\" ON \"steps\" USING btree (\"run_id\");",
       "CREATE INDEX \"usage_run_idx\" ON \"usage_entries\" USING btree (\"run_id\");"
     ]
+  },
+  {
+    "name": "0001_events",
+    "statements": [
+      "CREATE TABLE \"events\" (\n\t\"seq\" bigserial PRIMARY KEY NOT NULL,\n\t\"type\" text NOT NULL,\n\t\"at\" text NOT NULL,\n\t\"run_id\" text,\n\t\"subject_type\" text NOT NULL,\n\t\"subject_id\" text NOT NULL,\n\t\"data\" jsonb NOT NULL\n);",
+      "CREATE INDEX \"events_run_idx\" ON \"events\" USING btree (\"run_id\",\"seq\");",
+      "CREATE INDEX \"events_type_idx\" ON \"events\" USING btree (\"type\",\"seq\");",
+      "CREATE INDEX \"events_subject_idx\" ON \"events\" USING btree (\"subject_type\",\"subject_id\",\"seq\");"
+    ]
   }
 ];

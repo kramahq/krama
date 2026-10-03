@@ -1,0 +1,532 @@
+{
+  "numTotalTestSuites": 23,
+  "numPassedTestSuites": 23,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 45,
+  "numPassedTests": 26,
+  "numFailedTests": 0,
+  "numPendingTests": 19,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1791027496267,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "runs"],
+          "fullName": "PGlite (in-memory) Store contract runs creates, reads back and versions",
+          "status": "passed",
+          "title": "creates, reads back and versions",
+          "duration": 1139.9406669999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "runs"],
+          "fullName": "PGlite (in-memory) Store contract runs returns undefined for unknown ids",
+          "status": "passed",
+          "title": "returns undefined for unknown ids",
+          "duration": 723.2588749999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "runs"],
+          "fullName": "PGlite (in-memory) Store contract runs rejects creating twice and stale versions (optimistic concurrency)",
+          "status": "passed",
+          "title": "rejects creating twice and stale versions (optimistic concurrency)",
+          "duration": 657.944708,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "runs"],
+          "fullName": "PGlite (in-memory) Store contract runs does not alias stored data",
+          "status": "passed",
+          "title": "does not alias stored data",
+          "duration": 616.335458,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "runs"],
+          "fullName": "PGlite (in-memory) Store contract runs filters by status, pack, project and text, newest first, with paging",
+          "status": "passed",
+          "title": "filters by status, pack, project and text, newest first, with paging",
+          "duration": 642.4222090000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "runs"],
+          "fullName": "PGlite (in-memory) Store contract runs finds a run by idempotency key",
+          "status": "passed",
+          "title": "finds a run by idempotency key",
+          "duration": 596.295709,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "decisions"],
+          "fullName": "PGlite (in-memory) Store contract decisions stores decisions with their effect map and filters them",
+          "status": "passed",
+          "title": "stores decisions with their effect map and filters them",
+          "duration": 592.4444169999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "decisions"],
+          "fullName": "PGlite (in-memory) Store contract decisions enforces optimistic versions",
+          "status": "passed",
+          "title": "enforces optimistic versions",
+          "duration": 651.8625419999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [
+            "PGlite (in-memory)",
+            "Store contract",
+            "steps, projects, audit, usage"
+          ],
+          "fullName": "PGlite (in-memory) Store contract steps, projects, audit, usage lists steps by run",
+          "status": "passed",
+          "title": "lists steps by run",
+          "duration": 594.9913329999999,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [
+            "PGlite (in-memory)",
+            "Store contract",
+            "steps, projects, audit, usage"
+          ],
+          "fullName": "PGlite (in-memory) Store contract steps, projects, audit, usage keeps projects sorted by name",
+          "status": "passed",
+          "title": "keeps projects sorted by name",
+          "duration": 675.1831670000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [
+            "PGlite (in-memory)",
+            "Store contract",
+            "steps, projects, audit, usage"
+          ],
+          "fullName": "PGlite (in-memory) Store contract steps, projects, audit, usage appends audit entries, newest first, filterable",
+          "status": "passed",
+          "title": "appends audit entries, newest first, filterable",
+          "duration": 553.1432089999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [
+            "PGlite (in-memory)",
+            "Store contract",
+            "steps, projects, audit, usage"
+          ],
+          "fullName": "PGlite (in-memory) Store contract steps, projects, audit, usage records usage with nullable cost (never estimated)",
+          "status": "passed",
+          "title": "records usage with nullable cost (never estimated)",
+          "duration": 571.0037080000002,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "artifact catalog"],
+          "fullName": "PGlite (in-memory) Store contract artifact catalog upserts, reads back, lists by run with filters and finds the superseding version",
+          "status": "passed",
+          "title": "upserts, reads back, lists by run with filters and finds the superseding version",
+          "duration": 615.7262499999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite (in-memory)", "Store contract", "transactions"],
+          "fullName": "PGlite (in-memory) Store contract transactions commits on success and rolls back everything on failure",
+          "status": "passed",
+          "title": "commits on success and rolls back everything on failure",
+          "duration": 591.3027079999993,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "runs"],
+          "fullName": "Postgres Store contract runs creates, reads back and versions",
+          "status": "skipped",
+          "title": "creates, reads back and versions",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "runs"],
+          "fullName": "Postgres Store contract runs returns undefined for unknown ids",
+          "status": "skipped",
+          "title": "returns undefined for unknown ids",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "runs"],
+          "fullName": "Postgres Store contract runs rejects creating twice and stale versions (optimistic concurrency)",
+          "status": "skipped",
+          "title": "rejects creating twice and stale versions (optimistic concurrency)",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "runs"],
+          "fullName": "Postgres Store contract runs does not alias stored data",
+          "status": "skipped",
+          "title": "does not alias stored data",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "runs"],
+          "fullName": "Postgres Store contract runs filters by status, pack, project and text, newest first, with paging",
+          "status": "skipped",
+          "title": "filters by status, pack, project and text, newest first, with paging",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "runs"],
+          "fullName": "Postgres Store contract runs finds a run by idempotency key",
+          "status": "skipped",
+          "title": "finds a run by idempotency key",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "decisions"],
+          "fullName": "Postgres Store contract decisions stores decisions with their effect map and filters them",
+          "status": "skipped",
+          "title": "stores decisions with their effect map and filters them",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "decisions"],
+          "fullName": "Postgres Store contract decisions enforces optimistic versions",
+          "status": "skipped",
+          "title": "enforces optimistic versions",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "steps, projects, audit, usage"],
+          "fullName": "Postgres Store contract steps, projects, audit, usage lists steps by run",
+          "status": "skipped",
+          "title": "lists steps by run",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "steps, projects, audit, usage"],
+          "fullName": "Postgres Store contract steps, projects, audit, usage keeps projects sorted by name",
+          "status": "skipped",
+          "title": "keeps projects sorted by name",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "steps, projects, audit, usage"],
+          "fullName": "Postgres Store contract steps, projects, audit, usage appends audit entries, newest first, filterable",
+          "status": "skipped",
+          "title": "appends audit entries, newest first, filterable",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "steps, projects, audit, usage"],
+          "fullName": "Postgres Store contract steps, projects, audit, usage records usage with nullable cost (never estimated)",
+          "status": "skipped",
+          "title": "records usage with nullable cost (never estimated)",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "artifact catalog"],
+          "fullName": "Postgres Store contract artifact catalog upserts, reads back, lists by run with filters and finds the superseding version",
+          "status": "skipped",
+          "title": "upserts, reads back, lists by run with filters and finds the superseding version",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres", "Store contract", "transactions"],
+          "fullName": "Postgres Store contract transactions commits on success and rolls back everything on failure",
+          "status": "skipped",
+          "title": "commits on success and rolls back everything on failure",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite event log", "EventLog contract"],
+          "fullName": "PGlite event log EventLog contract assigns strictly increasing cursors and timestamps",
+          "status": "passed",
+          "title": "assigns strictly increasing cursors and timestamps",
+          "duration": 568.8867500000015,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite event log", "EventLog contract"],
+          "fullName": "PGlite event log EventLog contract replays exactly the events after a cursor",
+          "status": "passed",
+          "title": "replays exactly the events after a cursor",
+          "duration": 504.74633299999914,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite event log", "EventLog contract"],
+          "fullName": "PGlite event log EventLog contract filters by topic with no cross-run leakage",
+          "status": "passed",
+          "title": "filters by topic with no cross-run leakage",
+          "duration": 588.7639589999999,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite event log", "EventLog contract"],
+          "fullName": "PGlite event log EventLog contract delivers live events to subscribers until they unsubscribe",
+          "status": "passed",
+          "title": "delivers live events to subscribers until they unsubscribe",
+          "duration": 610.4902089999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["PGlite event log", "EventLog contract"],
+          "fullName": "PGlite event log EventLog contract answers a too-old cursor with CursorGoneError",
+          "status": "passed",
+          "title": "answers a too-old cursor with CursorGoneError",
+          "duration": 573.5289590000011,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres event log", "EventLog contract"],
+          "fullName": "Postgres event log EventLog contract assigns strictly increasing cursors and timestamps",
+          "status": "skipped",
+          "title": "assigns strictly increasing cursors and timestamps",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres event log", "EventLog contract"],
+          "fullName": "Postgres event log EventLog contract replays exactly the events after a cursor",
+          "status": "skipped",
+          "title": "replays exactly the events after a cursor",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres event log", "EventLog contract"],
+          "fullName": "Postgres event log EventLog contract filters by topic with no cross-run leakage",
+          "status": "skipped",
+          "title": "filters by topic with no cross-run leakage",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres event log", "EventLog contract"],
+          "fullName": "Postgres event log EventLog contract delivers live events to subscribers until they unsubscribe",
+          "status": "skipped",
+          "title": "delivers live events to subscribers until they unsubscribe",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["Postgres event log", "EventLog contract"],
+          "fullName": "Postgres event log EventLog contract answers a too-old cursor with CursorGoneError",
+          "status": "skipped",
+          "title": "answers a too-old cursor with CursorGoneError",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["persistence"],
+          "fullName": "persistence survives a restart, including in a data directory whose path has spaces",
+          "status": "passed",
+          "title": "survives a restart, including in a data directory whose path has spaces",
+          "duration": 843.8113750000011,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["persistence"],
+          "fullName": "persistence starts quickly once the data directory exists",
+          "status": "passed",
+          "title": "starts quickly once the data directory exists",
+          "duration": 983.5687909999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["concurrency"],
+          "fullName": "concurrency lets exactly one of many concurrent writers win an optimistic update",
+          "status": "passed",
+          "title": "lets exactly one of many concurrent writers win an optimistic update",
+          "duration": 571.8845000000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["concurrency"],
+          "fullName": "concurrency serialises concurrent transactions without losing updates",
+          "status": "passed",
+          "title": "serialises concurrent transactions without losing updates",
+          "duration": 588.9657079999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["concurrency"],
+          "fullName": "concurrency reports the current version in a conflict",
+          "status": "passed",
+          "title": "reports the current version in a conflict",
+          "duration": 522.7795000000006,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["engine on the real store"],
+          "fullName": "engine on the real store runs a full plan → gate → resolve → complete on PGlite",
+          "status": "passed",
+          "title": "runs a full plan → gate → resolve → complete on PGlite",
+          "duration": 614.1443329999984,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["memory placeholder"],
+          "fullName": "memory placeholder stores and searches records by scope, status, tag and text",
+          "status": "passed",
+          "title": "stores and searches records by scope, status, tag and text",
+          "duration": 636.4058750000004,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791027496809,
+      "endTime": 1791027513643.4058,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/skgs/Views/projects/software-factory/kramahq/krama/packages/store/test/store.contract.test.ts"
+    }
+  ]
+}

@@ -117,3 +117,22 @@ export const memoryRecords = pgTable(
     index('memory_status_idx').on(t.status),
   ],
 );
+
+/** Persisted event log. `seq` is the monotonic cursor (SSE id); retention is by count and age. */
+export const events = pgTable(
+  'events',
+  {
+    seq: bigserial('seq', { mode: 'number' }).primaryKey(),
+    type: text('type').notNull(),
+    at: text('at').notNull(),
+    runId: text('run_id'),
+    subjectType: text('subject_type').notNull(),
+    subjectId: text('subject_id').notNull(),
+    data: jsonb('data').notNull(),
+  },
+  (t) => [
+    index('events_run_idx').on(t.runId, t.seq),
+    index('events_type_idx').on(t.type, t.seq),
+    index('events_subject_idx').on(t.subjectType, t.subjectId, t.seq),
+  ],
+);
