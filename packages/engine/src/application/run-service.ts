@@ -26,6 +26,7 @@ import {
 } from './run-ops.js';
 
 const DEFAULT_MAX_LOOPS = 2;
+const DEFAULT_DELEGATION = 'native' as const;
 
 export class RunService {
   constructor(private readonly c: Ctx) {}
@@ -46,6 +47,7 @@ export class RunService {
         backend: 'a2a-claude',
       }),
       ...cmd.orchestrator,
+      delegation: cmd.orchestrator?.delegation ?? c.policy.defaultDelegation ?? DEFAULT_DELEGATION,
     } as Run['orchestrator'];
     assertBackendAllowed(orch.backend, c.policy.allowedBackends);
 

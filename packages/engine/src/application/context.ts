@@ -1,4 +1,4 @@
-import type { ActorRef, EventEnvelope, Phase, Run } from '@kramahq/contract';
+import type { ActorRef, DelegationMode, EventEnvelope, Phase, Run } from '@kramahq/contract';
 import { DomainError } from '../domain/errors.js';
 import type { DomainEvent } from '../domain/events.js';
 import type { Ports, RunRecord, Store, Versioned } from '../ports/index.js';
@@ -11,6 +11,8 @@ export interface Policy {
   defaultMaxLoops?: number;
   defaultBudgetUsd?: number;
   defaultOrchestrator?: { definitionId: string; backend: string; model?: string };
+  /** How orchestrators reach their workers when the run does not say. Default `native`. */
+  defaultDelegation?: DelegationMode;
   /** Budget raise multiplier when a person raises the cap without giving a number. */
   raiseFactor?: number;
 }

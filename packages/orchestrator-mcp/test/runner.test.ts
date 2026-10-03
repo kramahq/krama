@@ -392,6 +392,7 @@ describe('the orchestrator prompt', () => {
       title: 'Release notes',
       input: { text: 'Write notes for 1.2', params: { audience: 'customers' } },
       mode: 'review',
+      orchestrator: { definitionId: 'orchestrator/default', backend: 'a2a-claude' },
       ...over,
     }) as never;
   const roster = [

@@ -11,6 +11,7 @@ import {
 } from '@kramahq/engine';
 import { firstMessage, renderOrchestratorPrompt } from './prompt.js';
 import type { OrchestratorMcp } from './server.js';
+import { buildSubAgents, type SubAgentsOptions } from './subagents.js';
 import { mcpEntryFor } from './tokens.js';
 import type { AgentDirectory } from './tools.js';
 
@@ -25,6 +26,8 @@ export interface RunnerOptions {
   maxNudges?: number;
   /** Time one orchestrator turn may take. Default 6 h (turns include long delegations). */
   turnTimeoutMs?: number;
+  /** Sub-agent tool timings for `native` delegation (skillmap probe and sync budget). */
+  subAgents?: SubAgentsOptions;
   onError?: (e: unknown, where: string) => void;
 }
 
@@ -399,7 +402,7 @@ export class OrchestratorRunner implements RunExecutor {
         'not_found',
         `Orchestrator definition "${run.orchestrator.definitionId}" not found`,
       );
-    const definition = {
+    let definition = {
       ...base,
       backend: {
         ...base.backend,
@@ -411,8 +414,27 @@ export class OrchestratorRunner implements RunExecutor {
       backendUsable: (b) => directory.backendUsable(b),
     }).resolved;
 
+    // Runs created before delegation modes existed relayed through Krama.
+    const mode = run.orchestrator.delegation ?? 'krama';
+    if (mode === 'native') {
+      // The orchestrator calls workers itself, so every rostered worker must be up and addressable first, and its
+      // sub-agent config is generated from exactly that roster (an unlisted agent cannot be reached).
+      const workers = [];
+      for (const r of roster) workers.push(await mcp.ensureWorker(run, r));
+      definition = {
+        ...definition,
+        backend: {
+          ...definition.backend,
+          common: {
+            ...definition.backend.common,
+            subAgents: buildSubAgents(workers, this.o.subAgents),
+          },
+        },
+      };
+    }
+
     mcp.tokens.revokeRun(run.id);
-    const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id));
+    const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
     const persona = directory.systemPrompt(definition.id);
     const spawned = await runtime.spawn({
       definition,

@@ -13,6 +13,7 @@ import {
 } from '@kramahq/engine';
 import { z } from 'zod';
 import { ScopeError, type ToolErrorBody } from './errors.js';
+import { ensureWorker } from './workers.js';
 import type { Scope } from './tokens.js';
 
 /** What the server wiring supplies about agents beyond the engine's ports. */
@@ -54,6 +55,15 @@ export interface ToolDef<S extends z.ZodRawShape = z.ZodRawShape> {
 }
 
 const def = <S extends z.ZodRawShape>(t: ToolDef<S>): ToolDef<S> => t;
+
+/**
+ * Tools that only make sense when Krama relays delegations. In `native` mode the orchestrator reaches workers through
+ * its own sub-agent tools, so these are not offered (offering both would let it bypass the configured roster).
+ */
+export const KRAMA_MODE_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  'delegate_to_agent',
+  'query_agents',
+]);
 
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_READ_BYTES = 100_000;
@@ -254,27 +264,8 @@ export const TOOLS = [
         const runtime = c.ports.agents;
         if (!runtime) throw new DomainError('not_found', 'No agent runtime is configured');
         const slot = `${run.id}:${a.role}`;
-        let agentId = c.state.agents.get(slot);
-        if (!agentId || !runtime.ref(agentId)) {
-          const extras = c.directory.extras?.(resolved.definition, run.id);
-          const spawned = await runtime.spawn({
-            definition:
-              resolved.backend === resolved.definition.backend.wrapper
-                ? resolved.definition
-                : {
-                    ...resolved.definition,
-                    backend: { ...resolved.definition.backend, wrapper: resolved.backend },
-                  },
-            workspace: { mode: 'shared', key: run.id },
-            assignment: { runId: run.id, phaseId: a.phaseId },
-            systemPrompt: c.directory.systemPrompt(resolved.definition.id),
-            ...(extras?.mcp ? { mcp: extras.mcp } : {}),
-            ...(extras?.env ? { env: extras.env } : {}),
-          });
-          agentId = spawned.id;
-          c.state.agents.set(slot, agentId);
-        }
-        const ref = runtime.ref(agentId)!;
+        const ref = await ensureWorker(c, run, resolved, { runId: run.id, phaseId: a.phaseId });
+        const agentId = ref.id;
         runtime.assign(agentId, { runId: run.id, phaseId: a.phaseId });
         const contextId = a.contextId ?? c.state.contexts.get(slot);
         try {

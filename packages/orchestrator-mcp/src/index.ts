@@ -4,3 +4,5 @@ export * from './tools.js';
 export * from './server.js';
 export * from './prompt.js';
 export * from './runner.js';
+export * from './subagents.js';
+export * from './workers.js';

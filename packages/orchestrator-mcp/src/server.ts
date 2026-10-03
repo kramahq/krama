@@ -1,9 +1,17 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type { Engine, Ports } from '@kramahq/engine';
+import type { Run } from '@kramahq/contract';
+import type { AgentRef, Engine, Ports, ResolvedRole } from '@kramahq/engine';
 import { toToolError } from './errors.js';
-import { TOOLS, type AgentDirectory, type SharedState, type ToolCtx } from './tools.js';
+import {
+  KRAMA_MODE_ONLY_TOOLS,
+  TOOLS,
+  type AgentDirectory,
+  type SharedState,
+  type ToolCtx,
+} from './tools.js';
+import { ensureWorker } from './workers.js';
 import { TokenRegistry, type Scope } from './tokens.js';
 
 export interface OrchestratorMcpOptions {
@@ -52,6 +60,7 @@ export class OrchestratorMcp {
       cb: (args: unknown) => Promise<unknown>,
     ) => void;
     for (const t of TOOLS) {
+      if (scope.delegation === 'native' && KRAMA_MODE_ONLY_TOOLS.has(t.name)) continue;
       register(
         t.name,
         { title: t.title, description: t.description, inputSchema: t.input },
@@ -75,6 +84,15 @@ export class OrchestratorMcp {
       );
     }
     return server;
+  }
+
+  /** Starts (or finds) the worker for a role and records it against the run, so `releaseRun` stops it with the run. */
+  ensureWorker(run: Run, resolved: ResolvedRole): Promise<AgentRef> {
+    return ensureWorker(
+      { ports: this.o.ports, directory: this.o.directory, state: this.state },
+      run,
+      resolved,
+    );
   }
 
   /** Ends a run's session state: returns the worker agent ids spawned for it and forgets conversations and in-flight calls. */

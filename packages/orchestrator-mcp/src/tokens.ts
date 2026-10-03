@@ -1,9 +1,11 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { DelegationMode } from '@kramahq/contract';
 
-/** What a token allows: acting as the orchestrator of exactly one run. */
+/** What a token allows: acting as the orchestrator of exactly one run, with the tool surface its delegation mode implies. */
 export interface Scope {
   runId: string;
   role: 'orchestrator';
+  delegation: DelegationMode;
   expiresAt: number;
 }
 
@@ -17,11 +19,12 @@ export class TokenRegistry {
   private readonly byHash = new Map<string, Scope>();
   constructor(private readonly now: () => number = Date.now) {}
 
-  issue(runId: string, ttlMs = 6 * 60 * 60_000): string {
+  issue(runId: string, ttlMs = 6 * 60 * 60_000, delegation: DelegationMode = 'krama'): string {
     const token = `krm_${randomBytes(32).toString('base64url')}`;
     this.byHash.set(hash(token).toString('hex'), {
       runId,
       role: 'orchestrator',
+      delegation,
       expiresAt: this.now() + ttlMs,
     });
     return token;

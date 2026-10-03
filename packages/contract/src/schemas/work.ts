@@ -109,6 +109,13 @@ export const step = z.object({
 });
 export type Step = z.infer<typeof step>;
 
+/**
+ * How the orchestrator reaches its workers. `native`: its own A2A sub-agent tools, configured by Krama from the roster.
+ * `krama`: through Krama's `delegate_to_agent` tool, which relays over the agent gateway.
+ */
+export const delegationMode = z.enum(['krama', 'native']);
+export type DelegationMode = z.infer<typeof delegationMode>;
+
 export const run = z.object({
   id: id('run'),
   title: z.string(),
@@ -128,6 +135,8 @@ export const run = z.object({
     definitionId: z.string(),
     backend: z.string(),
     model: z.string().optional(),
+    /** Absent on runs created before delegation modes existed; those behave as `krama`. */
+    delegation: delegationMode.optional(),
   }),
   budget: z.object({
     max: money,
@@ -168,6 +177,7 @@ export const createRun = z.object({
       definitionId: z.string().optional(),
       backend: z.string().optional(),
       model: z.string().optional(),
+      delegation: delegationMode.optional(),
     })
     .optional(),
   labels: z.array(z.string()).optional(),
