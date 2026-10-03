@@ -11,7 +11,8 @@ export type DomainErrorCode =
   | 'budget_exceeded'
   | 'backend_not_allowed'
   | 'unknown_phase'
-  | 'not_found';
+  | 'not_found'
+  | 'roster_unsatisfied';
 
 /** Contract problem code a domain error maps to at the API edge. */
 const PROBLEM: Record<DomainErrorCode, ProblemCode> = {
@@ -26,6 +27,7 @@ const PROBLEM: Record<DomainErrorCode, ProblemCode> = {
   backend_not_allowed: 'forbidden',
   unknown_phase: 'not_found',
   not_found: 'not_found',
+  roster_unsatisfied: 'roster_unsatisfied',
 };
 
 /** A rule of the platform was violated. Never thrown for ordinary outcomes (those are return values). */

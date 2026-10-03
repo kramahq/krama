@@ -29,6 +29,7 @@
     "@kramahq/contract": "workspace:*",
     "@kramahq/engine": "workspace:*",
     "cross-spawn": "^7.0.6",
+    "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
