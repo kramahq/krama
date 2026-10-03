@@ -10,7 +10,8 @@ export type DomainErrorCode =
   | 'loop_cap_reached'
   | 'budget_exceeded'
   | 'backend_not_allowed'
-  | 'unknown_phase';
+  | 'unknown_phase'
+  | 'not_found';
 
 /** Contract problem code a domain error maps to at the API edge. */
 const PROBLEM: Record<DomainErrorCode, ProblemCode> = {
@@ -24,6 +25,7 @@ const PROBLEM: Record<DomainErrorCode, ProblemCode> = {
   budget_exceeded: 'budget_policy',
   backend_not_allowed: 'forbidden',
   unknown_phase: 'not_found',
+  not_found: 'not_found',
 };
 
 /** A rule of the platform was violated. Never thrown for ordinary outcomes (those are return values). */

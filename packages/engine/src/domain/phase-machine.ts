@@ -10,7 +10,8 @@ export type PhaseTrigger =
   | 'fail'
   | 'skip'
   | 'loop'
-  | 'restart';
+  | 'restart'
+  | 'reopen';
 
 type Table = Record<PhaseStatus, Partial<Record<PhaseTrigger, PhaseStatus>>>;
 
@@ -26,7 +27,8 @@ const TABLE: Table = {
   },
   awaiting_decision: { approve: 'completed', revise: 'active', fail: 'failed' },
   looping: { restart: 'active', fail: 'failed' },
-  completed: {},
+  // `reopen`: an evaluator in a later phase sent work back to this (already completed) producer phase.
+  completed: { reopen: 'active' },
   failed: {},
   skipped: {},
 };
@@ -50,6 +52,7 @@ export const nextIteration = (
   trigger === 'start'
     ? Math.max(iteration, 0) + 1
     : (from === 'awaiting_decision' && trigger === 'revise') ||
-        (from === 'looping' && trigger === 'restart')
+        (from === 'looping' && trigger === 'restart') ||
+        trigger === 'reopen'
       ? iteration + 1
       : iteration;
