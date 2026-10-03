@@ -1,5 +1,7 @@
 import type {
   ActorRef,
+  Agent,
+  AgentDefinition,
   BackendDescriptor,
   Artifact,
   AuditEntry,
@@ -275,6 +277,38 @@ export interface SendMessage {
   signal?: AbortSignal;
 }
 
+export interface SpawnSpec {
+  definition: AgentDefinition;
+  /** Reuse an id (restart); generated when omitted. */
+  instanceId?: string;
+  assignment?: Agent['assignment'];
+  /** `isolated`: a private directory for this agent. `shared`: one directory shared by `key` (usually a run id). */
+  workspace: { mode: 'isolated' | 'shared'; key: string };
+  /** Persona text, placed in the provider's own system-prompt key. */
+  systemPrompt?: string;
+  allowedTools?: string[];
+  /** MCP servers for this agent, in the wrapper's `mcp` config format. */
+  mcp?: Record<string, unknown>;
+}
+
+export type AgentFilter = { status?: Agent['status'][]; role?: string; runId?: string };
+
+/** Runs and supervises agent processes (A2A wrappers). The engine only sees this port. */
+export interface AgentRuntime {
+  spawn(spec: SpawnSpec): Promise<Agent>;
+  /** Stops the process tree and releases its port and workspace lock. Idempotent. */
+  stop(id: string): Promise<void>;
+  restart(id: string): Promise<Agent>;
+  get(id: string): Agent | undefined;
+  list(filter?: AgentFilter): Agent[];
+  /** Marks an instance as working for a run phase (or idle again). */
+  assign(id: string, assignment: Agent['assignment'] | undefined): void;
+  /** Address the gateway should talk to. */
+  ref(id: string): AgentRef | undefined;
+  /** Stops everything. Call on server shutdown. */
+  shutdown(): Promise<void>;
+}
+
 /** Read access to registered backends (A2A wrappers). Adding a provider adds a descriptor; the engine never changes. */
 export interface BackendCatalog {
   list(): BackendDescriptor[];
@@ -338,4 +372,5 @@ export interface Ports {
   executor?: RunExecutor;
   workItems?: readonly WorkItemSource[];
   backends?: BackendCatalog;
+  agents?: AgentRuntime;
 }
