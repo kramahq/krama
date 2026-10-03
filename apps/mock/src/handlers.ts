@@ -292,7 +292,8 @@ export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<stri
     getRun: (req) => {
       const r = run(req.params.id!);
       if (csv(req.query.expand).includes('phases')) return r;
-      const { phases: _p, ...lite } = r;
+      const lite: Partial<Run> = { ...r };
+      delete lite.phases;
       return lite;
     },
     patchRun: (req) => {

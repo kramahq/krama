@@ -85,15 +85,12 @@ export async function buildMock(options: MockOptions = {}): Promise<MockApp> {
       });
   });
   app.setNotFoundHandler((_req, reply) =>
-    reply
-      .code(404)
-      .type('application/problem+json')
-      .send({
-        type: 'https://kramahq.dev/problems/not_found',
-        title: 'Route not found',
-        status: 404,
-        code: 'not_found',
-      }),
+    reply.code(404).type('application/problem+json').send({
+      type: 'https://kramahq.dev/problems/not_found',
+      title: 'Route not found',
+      status: 404,
+      code: 'not_found',
+    }),
   );
 
   // Handlers read `state` through the handle, so `reset()` swaps data without re-registering routes.
