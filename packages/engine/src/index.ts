@@ -6,5 +6,7 @@ export * from './domain/cost.js';
 export * from './domain/invariants.js';
 export * from './domain/evaluator-loop.js';
 export * from './domain/decision.js';
+export * from './domain/matching.js';
+export * from './domain/roster.js';
 export * from './ports/index.js';
 export * from './application/index.js';
