@@ -1,0 +1,48 @@
+[
+  {
+    "id": "000000412",
+    "type": "run.planned",
+    "at": "2026-10-03T09:00:12Z",
+    "schema": 1,
+    "runId": "run_01J9AIDLC",
+    "subject": { "type": "run", "id": "run_01J9AIDLC" },
+    "data": { "version": 3, "phases": ["inception", "construction", "operations"] }
+  },
+  {
+    "id": "000000431",
+    "type": "step.progress",
+    "at": "2026-10-03T10:40:03Z",
+    "schema": 1,
+    "runId": "run_01J9VID",
+    "subject": { "type": "step", "id": "step_vid_render" },
+    "data": {
+      "phaseId": "video",
+      "progress": 0.62,
+      "etaSeconds": 140,
+      "agent": { "role": "video", "backend": "a2a-claude" }
+    }
+  },
+  {
+    "id": "000000447",
+    "type": "decision.requested",
+    "at": "2026-10-03T09:21:40Z",
+    "schema": 1,
+    "runId": "run_01J9AIDLC",
+    "subject": { "type": "decision", "id": "dec_01J9REV" },
+    "data": { "kind": "review", "title": "Validate Inception output (Mob Elaboration)" }
+  },
+  {
+    "id": "000000452",
+    "type": "phase.looped",
+    "at": "2026-10-03T10:55:30Z",
+    "schema": 1,
+    "runId": "run_01J9VID",
+    "subject": { "type": "phase", "id": "edit" },
+    "data": {
+      "from": "critic",
+      "to": "edit",
+      "iteration": 2,
+      "findings": [{ "severity": "major", "title": "Voiceover desync at 00:42" }]
+    }
+  }
+]

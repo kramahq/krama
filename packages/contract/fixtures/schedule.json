@@ -1,0 +1,21 @@
+{
+  "id": "sch_nightly_deps",
+  "name": "Nightly dependency scan",
+  "status": "active",
+  "pack": { "id": "pack_techdebt", "pin": "sha", "sha": "c0de" },
+  "trigger": { "type": "cron", "expression": "0 2 * * *", "timezone": "Asia/Kolkata" },
+  "input": { "repo": "payments-service", "severity": ["high", "critical"] },
+  "policies": {
+    "overlap": "skip",
+    "missedFire": "drop",
+    "maxConcurrent": 1,
+    "decisionTimeout": { "after": "PT8H", "action": "expire" }
+  },
+  "budget": {
+    "perRun": { "amount": 5, "currency": "USD" },
+    "perPeriod": { "amount": { "amount": 100, "currency": "USD" }, "period": "month" }
+  },
+  "nextFireAt": "2026-10-04T20:30:00Z",
+  "lastRun": { "runId": "run_01J9SCAN", "status": "completed", "at": "2026-10-03T20:30:00Z" },
+  "links": {}
+}

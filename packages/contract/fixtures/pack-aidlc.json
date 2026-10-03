@@ -1,0 +1,159 @@
+{
+  "id": "pack_aidlc",
+  "name": "AI-DLC",
+  "version": "0.3.0",
+  "status": "installed",
+  "trust": "verified",
+  "description": "AI-Driven Development Life Cycle: Inception, Construction, Operations with human validation.",
+  "tags": ["sdlc", "methodology"],
+  "source": {
+    "type": "git",
+    "url": "https://github.com/acme/packs",
+    "ref": "v0.3.0",
+    "sha": "9f3c2ab",
+    "path": "ai-dlc"
+  },
+  "engine": { "requires": ">=0.1.0", "compatible": true },
+  "methodology": {
+    "id": "ai-dlc",
+    "name": "AI-DLC",
+    "iteration": { "unit": "bolt", "label": "Bolt" },
+    "phases": [
+      {
+        "id": "inception",
+        "label": "Inception",
+        "kind": "inception",
+        "roles": ["analyst", "architect"],
+        "dependsOn": []
+      },
+      {
+        "id": "construction",
+        "label": "Construction",
+        "kind": "construction",
+        "roles": ["developer", "reviewer", "qa"],
+        "dependsOn": ["inception"]
+      },
+      {
+        "id": "operations",
+        "label": "Operations",
+        "kind": "operations",
+        "roles": ["devops"],
+        "dependsOn": ["construction"]
+      }
+    ],
+    "gates": [
+      {
+        "afterPhase": "inception",
+        "kind": "review",
+        "policy": "human_required",
+        "label": "Mob Elaboration"
+      },
+      {
+        "afterPhase": "construction",
+        "kind": "review",
+        "policy": "human_required",
+        "label": "Mob Construction review"
+      },
+      {
+        "afterPhase": "operations",
+        "kind": "approval",
+        "policy": "human_required",
+        "label": "Production approval",
+        "need": 2
+      }
+    ],
+    "evaluators": [
+      { "producer": "developer", "evaluator": "reviewer", "maxLoops": 3, "crossBackend": true }
+    ]
+  },
+  "roster": [
+    { "role": "analyst", "select": { "capabilities": ["requirements"] } },
+    {
+      "role": "developer",
+      "select": { "definitionId": "developer/default", "backend": "a2a-codex" },
+      "count": 2
+    },
+    { "role": "reviewer", "select": { "capabilities": ["code-review"], "backend": "a2a-claude" } }
+  ],
+  "inputsSchema": {
+    "type": "object",
+    "required": ["intent"],
+    "properties": {
+      "intent": { "type": "string", "title": "Business intent", "x-ui": { "widget": "markdown" } },
+      "workItem": { "type": "string", "format": "work-item" },
+      "constraints": { "type": "array", "items": { "type": "string" }, "title": "Constraints" }
+    }
+  },
+  "ui": {
+    "terminology": {
+      "run": "Delivery",
+      "runs": "Deliveries",
+      "iteration": "Bolt",
+      "workItem": "Epic"
+    },
+    "phases": {
+      "inception": { "label": "Inception", "icon": "lightbulb", "color": "amber" },
+      "construction": { "label": "Construction", "icon": "hammer", "color": "blue" },
+      "operations": { "label": "Operations", "icon": "rocket", "color": "green" }
+    },
+    "decisions": {
+      "review": {
+        "label": "Validate with the team",
+        "helpText": "Review AI questions and proposals before moving on."
+      }
+    },
+    "artifacts": {
+      "requirements": { "viewer": "markdown", "label": "Requirements", "primary": true },
+      "patch": { "viewer": "diff", "label": "Code change" }
+    },
+    "runCard": { "badges": ["bolt"], "metrics": [{ "label": "Bolts", "path": "$.meta.bolts" }] },
+    "links": { "workItem": "https://jira.example.com/browse/{ref}" }
+  },
+  "artifactTypes": [
+    {
+      "type": "requirements",
+      "label": "Requirements",
+      "mediaTypes": ["text/markdown"],
+      "viewer": "markdown"
+    },
+    { "type": "patch", "label": "Code change", "mediaTypes": ["text/x-diff"], "viewer": "diff" }
+  ],
+  "requirements": {
+    "mcpServers": ["bitbucket"],
+    "secrets": ["JIRA_TOKEN"],
+    "workItemSources": ["jira"]
+  },
+  "permissions": [
+    {
+      "id": "p1",
+      "kind": "mcp_server",
+      "subject": "bitbucket (http://localhost:4104/mcp)",
+      "access": "read/write repos",
+      "risk": "high",
+      "requestedBy": "developer/default"
+    },
+    {
+      "id": "p2",
+      "kind": "memory_scope",
+      "subject": "project",
+      "access": "propose",
+      "risk": "low",
+      "requestedBy": "pack"
+    },
+    {
+      "id": "p3",
+      "kind": "script_execution",
+      "subject": "skill:run-tests/scripts/run.mjs",
+      "risk": "high",
+      "requestedBy": "skill:run-tests"
+    }
+  ],
+  "memoryScopes": [
+    { "scope": "project", "access": "propose" },
+    { "scope": "agent", "access": "write" }
+  ],
+  "tests": { "suites": 2, "lastRun": { "status": "passed", "at": "2026-10-02T21:10:00Z" } },
+  "stats": { "runs": 12, "successRate": 0.83, "avgCost": null },
+  "installedAt": "2026-10-01T08:00:00Z",
+  "links": { "install": { "href": "/api/v1/packs/pack_aidlc/update/preview", "method": "POST" } }
+}

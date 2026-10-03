@@ -1,0 +1,23 @@
+{
+  "id": "art_vid1",
+  "runId": "run_01J9VID",
+  "phaseId": "edit",
+  "name": "explainer-final.mp4",
+  "type": "final-cut",
+  "mediaType": "video/mp4",
+  "size": 88123456,
+  "sha256": "ab12cd34",
+  "version": 3,
+  "status": "in_review",
+  "producer": { "type": "agent", "id": "agt_video1", "name": "Video" },
+  "meta": { "durationSeconds": 94, "resolution": "1920x1080", "hasVoiceover": true },
+  "renditions": [
+    {
+      "kind": "poster",
+      "mediaType": "image/jpeg",
+      "href": "/api/v1/artifacts/art_vid1/renditions/poster"
+    }
+  ],
+  "createdAt": "2026-10-03T10:50:00Z",
+  "links": { "content": { "href": "/api/v1/artifacts/art_vid1/content" } }
+}

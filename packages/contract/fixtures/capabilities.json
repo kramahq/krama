@@ -1,0 +1,72 @@
+{
+  "apiVersion": "v1",
+  "engineVersion": "0.0.0-mock",
+  "a2a": { "versions": ["1.0", "0.3"] },
+  "features": {
+    "runs": true,
+    "decisions": true,
+    "packs": true,
+    "packInstallFromGit": true,
+    "skills": true,
+    "memory": {
+      "enabled": true,
+      "scopes": ["agent", "role", "project", "pack", "org", "orchestrator"],
+      "export": ["pam"],
+      "gitSync": false
+    },
+    "schedules": { "enabled": true, "triggers": ["cron", "once"] },
+    "packTests": true,
+    "builder": true,
+    "typedArtifacts": true,
+    "eventReplay": true,
+    "multiProject": true,
+    "auth": {
+      "mode": "token",
+      "roles": ["viewer", "requester", "approver", "author", "operator", "admin"]
+    }
+  },
+  "workItemSources": [
+    { "id": "jira", "label": "Jira", "searchable": true, "connected": true },
+    { "id": "github", "label": "GitHub Issues", "searchable": true, "connected": false },
+    { "id": "text", "label": "Free text", "searchable": false, "connected": true }
+  ],
+  "backends": [
+    {
+      "wrapper": "a2a-claude",
+      "label": "Claude",
+      "models": ["claude-opus-5-5", "claude-sonnet-5-5"],
+      "canOrchestrate": true
+    },
+    { "wrapper": "a2a-codex", "label": "Codex", "models": ["gpt-5-codex"], "canOrchestrate": true },
+    {
+      "wrapper": "a2a-antigravity",
+      "label": "Gemini (Antigravity)",
+      "models": ["gemini-3"],
+      "canOrchestrate": true
+    },
+    {
+      "wrapper": "a2a-copilot",
+      "label": "GitHub Copilot",
+      "models": ["claude-opus-4.6"],
+      "canOrchestrate": false
+    }
+  ],
+  "viewers": [
+    "markdown",
+    "code",
+    "diff",
+    "json",
+    "table",
+    "image",
+    "audio",
+    "video",
+    "pdf",
+    "download"
+  ],
+  "limits": {
+    "maxUploadBytes": 536870912,
+    "maxRunsConcurrent": 10,
+    "agentCapacity": { "used": 7, "max": 90 }
+  },
+  "deprecations": []
+}

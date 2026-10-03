@@ -1,0 +1,28 @@
+{
+  "id": "dec_01J9PROD",
+  "kind": "approval",
+  "status": "pending",
+  "runId": "run_01J9AIDLC",
+  "phaseId": "operations",
+  "title": "Production approval",
+  "question": "Two approvers are required before deploying to production.",
+  "options": [
+    { "id": "approve", "label": "Approve", "style": "primary" },
+    {
+      "id": "reject",
+      "label": "Reject",
+      "style": "danger",
+      "input": { "required": true, "label": "Reason", "kind": "text" }
+    }
+  ],
+  "need": 2,
+  "approvals": [
+    {
+      "optionId": "approve",
+      "by": { "type": "user", "id": "u_2", "name": "Arjun" },
+      "at": "2026-10-03T12:00:00Z"
+    }
+  ],
+  "createdAt": "2026-10-03T11:30:00Z",
+  "links": {}
+}
