@@ -17,6 +17,8 @@ export interface DelegateInput {
   summary?: string;
   /** Resume a conversation (`Step.a2a.resumed` becomes true). */
   contextId?: string;
+  /** Idempotency key: an already-completed step with the same key is returned instead of repeating the work. */
+  key?: string;
   /** Per-call budget for long jobs. */
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -33,6 +35,8 @@ export interface DelegateResult {
   /** Set when the delegation failed, timed out or could not reach the agent. */
   error?: string;
   usage: Usage[];
+  /** True when an earlier completed step with the same key was returned and no agent was contacted. */
+  cached?: boolean;
 }
 
 /** Payload sizes kept in events; the full content is in artifacts, not the activity feed. */
@@ -69,6 +73,31 @@ export class StepService {
     if (!gateway) throw new DomainError('not_found', 'No AgentGateway configured');
     const actor: ActorRef = { type: 'agent', id: input.agent.id, name: input.agent.role };
 
+    if (input.key) {
+      const done = (await c.p.store.steps.listByRun(input.runId)).find(
+        (x) => x.key === input.key && x.status === 'completed',
+      );
+      if (done) {
+        const arts = (await c.p.artifacts.listByRun(input.runId)).filter(
+          (a) => a.stepId === done.id,
+        );
+        const texts: string[] = [];
+        for (const a of arts) {
+          if (!ANSWER_NAMES.has(a.name)) continue;
+          const body = await c.p.artifacts.read(a.id);
+          if (body) texts.push(new TextDecoder().decode(body.bytes));
+        }
+        return {
+          step: done,
+          status: 'completed',
+          answer: texts.join(''),
+          artifacts: arts,
+          usage: done.usage ?? [],
+          cached: true,
+        };
+      }
+    }
+
     // Engine-enforced preconditions, regardless of what the orchestrator asked for.
     let step = await c.p.store.transaction(async (tx) => {
       const rec = (await loadRun(tx, input.runId)).value;
@@ -97,6 +126,7 @@ export class StepService {
           backend: input.agent.backend,
         },
         summary: input.summary ?? clip(input.text.replace(/\s+/g, ' ').trim(), 120) ?? '',
+        ...(input.key ? { key: input.key } : {}),
         status: 'working',
         a2a: {
           resumed: Boolean(input.contextId),
@@ -225,6 +255,27 @@ export class StepService {
       ...(error ? { error } : {}),
       usage: aggregateUsage(usage),
     };
+  }
+
+  /** After a crash: steps still `working` or `queued` have no live agent behind them. Mark them failed so they can be retried. */
+  async failOrphaned(runId: string, reason = 'Interrupted by a restart'): Promise<string[]> {
+    const { c } = this;
+    const ids: string[] = [];
+    for (const s of await c.p.store.steps.listByRun(runId)) {
+      if (s.status !== 'working' && s.status !== 'queued') continue;
+      const cur = await c.p.store.steps.get(s.id);
+      await c.p.store.steps.put({ ...s, status: 'failed', endedAt: nowIso(c) }, cur?.version);
+      await publish(c, [
+        {
+          type: 'step.failed',
+          subject: { type: 'step', id: s.id },
+          runId,
+          data: { stepId: s.id, phaseId: s.phaseId, status: 'failed', error: reason },
+        },
+      ]);
+      ids.push(s.id);
+    }
+    return ids;
   }
 
   private async handle(

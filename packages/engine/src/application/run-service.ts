@@ -116,6 +116,25 @@ export class RunService {
     });
   }
 
+  /** Parks a run that cannot continue without a person (e.g. the orchestrator gave up). Resumable. */
+  block(runId: string, reason: string, actor: ActorRef = SYSTEM): Promise<Run> {
+    return this.mutate(runId, actor, (rec) => {
+      rec.run.status = transitionRun(rec.run.status, 'block');
+      rec.run.statusReason = reason;
+      return [runEvent(rec.run, 'run.updated')];
+    });
+  }
+
+  /** Ends a run as failed (unrecoverable). */
+  fail(runId: string, reason: string, actor: ActorRef = SYSTEM): Promise<Run> {
+    return this.mutate(runId, actor, (rec) => {
+      rec.run.status = transitionRun(rec.run.status, 'fail');
+      rec.run.statusReason = reason;
+      rec.run.endedAt = nowIso(this.c);
+      return [runEvent(rec.run, 'run.failed')];
+    });
+  }
+
   pause(runId: string, actor: ActorRef): Promise<Run> {
     return this.control(runId, actor, 'pause', 'run.updated', 'Paused');
   }

@@ -77,6 +77,21 @@ export class OrchestratorMcp {
     return server;
   }
 
+  /** Ends a run's session state: returns the worker agent ids spawned for it and forgets conversations and in-flight calls. */
+  releaseRun(runId: string): string[] {
+    const ids: string[] = [];
+    for (const [slot, id] of [...this.state.agents]) {
+      if (slot.startsWith(`${runId}:`)) {
+        ids.push(id);
+        this.state.agents.delete(slot);
+      }
+    }
+    for (const slot of [...this.state.contexts.keys()])
+      if (slot.startsWith(`${runId}:`)) this.state.contexts.delete(slot);
+    this.tokens.revokeRun(runId);
+    return ids;
+  }
+
   /** Starts the HTTP endpoint on loopback. Returns the base URL (add `/mcp`). */
   async listen(port = 0, host = '127.0.0.1'): Promise<string> {
     this.http = createServer((req, res) => void this.handle(req, res));

@@ -87,6 +87,8 @@ export const step = z.object({
   phaseId: z.string(),
   agent: z.object({ id: id('agt'), role: z.string(), backend: z.string() }),
   summary: z.string(),
+  /** Idempotency key of the delegation; an identical completed step is returned instead of repeated. */
+  key: z.string().optional(),
   status: stepStatus,
   a2a: z.object({
     taskId: z.string().optional(),

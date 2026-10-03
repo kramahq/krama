@@ -278,11 +278,17 @@ export const TOOLS = [
         runtime.assign(agentId, { runId: run.id, phaseId: a.phaseId });
         const contextId = a.contextId ?? c.state.contexts.get(slot);
         try {
+          const iteration = run.phases?.find((x) => x.id === a.phaseId)?.iteration ?? 0;
+          const stepKey = createHash('sha256')
+            .update(`${run.id}\0${a.phaseId}\0${iteration}\0${a.role}\0${a.task}`)
+            .digest('hex')
+            .slice(0, 32);
           const r = await c.engine.steps.delegate({
             runId: run.id,
             phaseId: a.phaseId,
             agent: ref,
             text: a.task,
+            key: stepKey,
             ...(contextId ? { contextId } : {}),
             ...(a.timeoutMs ? { timeoutMs: a.timeoutMs } : {}),
           });
@@ -290,6 +296,12 @@ export const TOOLS = [
           return {
             stepId: r.step.id,
             status: r.status,
+            ...(r.cached
+              ? {
+                  cached: true,
+                  note: 'This exact task was already completed; the earlier result is returned and no agent was contacted.',
+                }
+              : {}),
             answer: r.answer,
             ...(r.question ? { question: r.question } : {}),
             ...(r.error ? { error: r.error } : {}),
