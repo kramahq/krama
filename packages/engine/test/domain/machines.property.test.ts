@@ -87,10 +87,14 @@ describe('run state machine', () => {
 });
 
 describe('phase state machine', () => {
-  it('completed, failed and skipped phases are final', () => {
-    for (const s of ['completed', 'failed', 'skipped'] as PhaseStatus[]) {
+  it('failed and skipped phases are final; completed ones only reopen for an evaluator loop', () => {
+    for (const s of ['failed', 'skipped'] as PhaseStatus[]) {
       for (const t of PHASE_TRIGGERS) expect(() => transitionPhase(s, t)).toThrow(DomainError);
     }
+    for (const t of PHASE_TRIGGERS.filter((x) => x !== 'reopen'))
+      expect(() => transitionPhase('completed', t)).toThrow(DomainError);
+    expect(transitionPhase('completed', 'reopen')).toBe('active');
+    expect(nextIteration('completed', 'reopen', 1)).toBe(2);
   });
 
   it('a gate approval completes, a revision re-enters active with a higher iteration', () => {
