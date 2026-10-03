@@ -337,7 +337,11 @@ export class ProcessAgentRuntime implements AgentRuntime {
       child.once('error', (error) => resolve({ code: null, error }));
       child.once('exit', (code) => resolve({ code }));
     });
-    void exited.then((r) => this.onExit(entry, port, r.code));
+    let exitInfo: { code: number | null; error?: Error } | undefined;
+    void exited.then((r) => {
+      exitInfo = r;
+      return this.onExit(entry, port, r.code);
+    });
 
     if (!child.pid) {
       const r = await exited;
@@ -356,6 +360,17 @@ export class ProcessAgentRuntime implements AgentRuntime {
     if (ready !== 'ok') {
       await killTree(child.pid, { ops: this.ops, graceMs: 500 });
       await this.ledger.remove(id).catch(() => undefined);
+      // On Windows a missing program is reported as an error after the shell has already started.
+      const missing = (exitInfo as { error?: NodeJS.ErrnoException } | undefined)?.error;
+      if (missing?.code === 'ENOENT') {
+        return this.failStart(
+          entry,
+          port,
+          'spawn_failed',
+          missing.message,
+          `Is ${descriptor.package.bin} installed? ${descriptor.package.install}`,
+        );
+      }
       return this.failStart(
         entry,
         port,
