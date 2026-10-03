@@ -65,7 +65,29 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
-  apps/server: {}
+  apps/server:
+    dependencies:
+      '@kramahq/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+      '@kramahq/artifacts-fs':
+        specifier: workspace:*
+        version: link:../../packages/artifacts-fs
+      '@kramahq/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
+      '@kramahq/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@kramahq/orchestrator-mcp':
+        specifier: workspace:*
+        version: link:../../packages/orchestrator-mcp
+      '@kramahq/store':
+        specifier: workspace:*
+        version: link:../../packages/store
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.32.0
+        version: 1.32.0(zod@4.6.5)
 
   apps/ui: {}
 

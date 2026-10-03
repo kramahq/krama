@@ -51,10 +51,10 @@ export class RunService {
     } as Run['orchestrator'];
     assertBackendAllowed(orch.backend, c.policy.allowedBackends);
 
-    return c.p.store.transaction(async (tx) => {
+    const created = await c.p.store.transaction(async (tx) => {
       if (opts.idempotencyKey) {
         const prior = await tx.runs.findByIdempotencyKey(opts.idempotencyKey);
-        if (prior) return prior.value.run;
+        if (prior) return { run: prior.value.run, fresh: false };
       }
       const now = nowIso(c);
       const run: Run = {
@@ -98,9 +98,11 @@ export class RunService {
         ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
       });
       await audit(c, tx, actor, 'run.created', { type: 'run', id: run.id });
-      await publish(c, [runEvent(run, 'run.created')], actor);
-      return run;
+      return { run, fresh: true };
     });
+    // After the commit: the event log may use its own connection, and a rolled-back run must not announce itself.
+    if (created.fresh) await publish(c, [runEvent(created.run, 'run.created')], actor);
+    return created.run;
   }
 
   /** `planning → running`; starts the phases that have no dependencies. */
