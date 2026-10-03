@@ -33,7 +33,7 @@ export const spend = money.nullable();
 export type Spend = z.infer<typeof spend>;
 
 export const usage = z.object({
-  unit: z.enum(['usd', 'tokens', 'characters', 'seconds', 'images', 'calls']),
+  unit: z.enum(['usd', 'tokens', 'characters', 'seconds', 'images', 'calls', 'credits']),
   quantity: z.number(),
 });
 export type Usage = z.infer<typeof usage>;

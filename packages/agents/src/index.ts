@@ -9,3 +9,5 @@ export * from './runtime/workspace.js';
 export * from './runtime/log-tail.js';
 export * from './runtime/ledger.js';
 export * from './runtime/runtime.js';
+export * from './gateway/codec.js';
+export * from './gateway/a2a-gateway.js';
