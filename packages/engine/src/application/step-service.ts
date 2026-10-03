@@ -4,6 +4,7 @@ import type { DomainEvent } from '../domain/events.js';
 import { assertBackendAllowed, assertWithinBudget } from '../domain/invariants.js';
 import type { AgentRef, GatewayEvent } from '../ports/index.js';
 import type { BudgetService } from './budget-service.js';
+import type { DecisionService } from './decision-service.js';
 import { findPhase, loadRun, nowIso, publish, runEvent, type Ctx } from './context.js';
 import { aggregateUsage } from '../domain/cost.js';
 
@@ -53,6 +54,8 @@ const rawJson = (v: unknown): string | undefined => {
   }
 };
 
+/** Upper bound on consecutive access requests inside one delegation, so a misbehaving agent cannot loop forever. */
+const MAX_ACCESS_ROUNDS = 10;
 const ANSWER_NAMES = new Set(['response', 'message', 'answer', 'result']);
 const typeOfArtifact = (name: string, mediaType: string): string =>
   ANSWER_NAMES.has(name) ? 'message' : mediaType === 'application/json' ? 'data' : name;
@@ -65,6 +68,7 @@ export class StepService {
   constructor(
     private readonly c: Ctx,
     private readonly budget: BudgetService,
+    private readonly decisions: DecisionService,
   ) {}
 
   async delegate(input: DelegateInput): Promise<DelegateResult> {
@@ -181,28 +185,53 @@ export class StepService {
       },
     });
 
+    let text = input.text;
+    let contextId = input.contextId;
+    let accessRequest: { path: string; mode?: 'read' | 'write' } | undefined;
     try {
-      for await (const e of gateway.send(input.agent, {
-        text: input.text,
-        ...(input.contextId ? { contextId: input.contextId } : {}),
-        ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
-        ...(input.signal ? { signal: input.signal } : {}),
-      })) {
-        await this.handle(e, {
-          step: () => step,
-          saveStep,
-          emit,
-          activity,
-          actor,
-          input,
-          artifacts,
-          answer,
-          usage,
-          dec,
-          setQuestion: (q) => (question = q),
-          setStatus: (s) => (status = s),
-          setError: (m) => (error = m),
-        });
+      for (let round = 0; ; round++) {
+        accessRequest = undefined;
+        for await (const e of gateway.send(input.agent, {
+          text,
+          ...(contextId ? { contextId } : {}),
+          ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+          ...(input.signal ? { signal: input.signal } : {}),
+        })) {
+          await this.handle(e, {
+            step: () => step,
+            saveStep,
+            emit,
+            activity,
+            actor,
+            input,
+            artifacts,
+            answer,
+            usage,
+            dec,
+            setQuestion: (q) => (question = q),
+            setStatus: (s) => (status = s),
+            setError: (m) => (error = m),
+            setAccess: (r) => (accessRequest = r),
+          });
+        }
+        // An agent asking to touch a path outside its workspace is not a question for the orchestrator: the
+        // platform asks a person, then lets the same delegation carry on with the answer.
+        const req = accessRequest as { path: string; mode?: 'read' | 'write' } | undefined;
+        if (status !== 'input_required' || !req || round >= MAX_ACCESS_ROUNDS) break;
+        const verdict = await this.askAccess(input, req, saveStep);
+        if (verdict === 'canceled') {
+          status = 'canceled';
+          error = 'The run ended while access was being decided';
+          break;
+        }
+        question = undefined;
+        status = 'working';
+        contextId = step.a2a.contextId ?? contextId;
+        text =
+          verdict === 'denied'
+            ? `Access to ${req.path} was denied. Continue without it, or say what you need instead.`
+            : `Access to ${req.path} was granted${verdict === 'project' ? ' for this project' : ' once'}. Continue.`;
+        await saveStep({ status: 'working' });
       }
     } catch (e) {
       status = 'failed';
@@ -257,6 +286,91 @@ export class StepService {
     };
   }
 
+  /**
+   * Raises an `access` Decision for a path outside the workspace and waits for it. A project-level grant that a person
+   * made earlier answers without asking again. Resolves to how it went; `canceled` when the run ended first.
+   */
+  private async askAccess(
+    input: DelegateInput,
+    req: { path: string; mode?: 'read' | 'write' },
+    saveStep: (p: Partial<Step>) => Promise<void>,
+  ): Promise<'once' | 'project' | 'denied' | 'canceled'> {
+    const { c } = this;
+    const run = (await c.p.store.runs.get(input.runId))?.value.run;
+    if (run?.projectId && (await this.projectGrant(run.projectId, req.path))) return 'project';
+
+    // Subscribe before asking so a fast answer cannot be missed.
+    let decisionId = '';
+    let off = () => {};
+    const settled = new Promise<'resolved' | 'canceled'>((resolve) => {
+      off = c.p.events.subscribe(
+        (e) => {
+          if (e.type === 'run.stopped' || e.type === 'run.failed') resolve('canceled');
+          if (
+            e.subject.id === decisionId &&
+            (e.type === 'decision.resolved' || e.type === 'decision.expired')
+          )
+            resolve(e.type === 'decision.resolved' ? 'resolved' : 'canceled');
+        },
+        [`run:${input.runId}`],
+      );
+    });
+    await saveStep({ status: 'input_required' });
+    const d = await this.decisions.request({
+      decision: {
+        id: c.p.ids.next('dec'),
+        kind: 'access',
+        runId: input.runId as Step['runId'],
+        phaseId: input.phaseId,
+        title: `${input.agent.role} asks to ${req.mode ?? 'read'} ${req.path}`,
+        question: `Agent **${input.agent.role}** wants to ${req.mode ?? 'read'} a path outside its workspace:\n\n\`${req.path}\``,
+        access: {
+          path: req.path,
+          agent: input.agent.role,
+          ...(req.mode ? { mode: req.mode } : {}),
+        },
+        options: [
+          {
+            id: 'allow_once',
+            label: 'Allow once',
+            style: 'primary',
+            effect: 'Grants this one request',
+          },
+          {
+            id: 'allow_project',
+            label: 'Allow for project',
+            style: 'neutral',
+            effect: 'Remembered for this project',
+          },
+          { id: 'deny', label: 'Deny', style: 'danger', effect: 'The agent continues without it' },
+        ],
+        createdAt: nowIso(c),
+        links: {},
+      },
+    });
+    decisionId = d.id;
+    // It may already have been settled between asking and subscribing to the id.
+    const now = (await c.p.store.decisions.get(d.id))?.value.decision.status;
+    const how =
+      now && now !== 'pending' ? (now === 'resolved' ? 'resolved' : 'canceled') : await settled;
+    off();
+    if (how === 'canceled') return 'canceled';
+    const rec = await c.p.store.decisions.get(d.id);
+    const effect = rec?.value.effects[rec.value.decision.resolution?.optionId ?? ''];
+    return effect === 'grant_project' ? 'project' : effect === 'grant_once' ? 'once' : 'denied';
+  }
+
+  private async projectGrant(projectId: string, path: string): Promise<boolean> {
+    const { items } = await this.c.p.store.audit.list({ action: 'access.granted', limit: 200 });
+    return items.some(
+      (e) =>
+        e.detail?.scope === 'project' &&
+        e.detail.projectId === projectId &&
+        typeof e.detail.path === 'string' &&
+        (path === e.detail.path || path.startsWith(`${e.detail.path.replace(/[\\/]$/, '')}/`)),
+    );
+  }
+
   /** After a crash: steps still `working` or `queued` have no live agent behind them. Mark them failed so they can be retried. */
   async failOrphaned(runId: string, reason = 'Interrupted by a restart'): Promise<string[]> {
     const { c } = this;
@@ -294,6 +408,7 @@ export class StepService {
       setQuestion: (q: string) => void;
       setStatus: (s: StepStatus) => void;
       setError: (m: string) => void;
+      setAccess: (r: { path: string; mode?: 'read' | 'write' }) => void;
     },
   ): Promise<void> {
     const { c } = this;
@@ -313,6 +428,11 @@ export class StepService {
         k.setStatus(mapped);
         await k.saveStep({ a2a, status: mapped });
         if (mapped === 'input_required' && e.text) k.setQuestion(e.text);
+        if (mapped === 'input_required' && e.request)
+          k.setAccess({
+            path: e.request.path,
+            ...(e.request.mode ? { mode: e.request.mode } : {}),
+          });
         if ((mapped === 'failed' || mapped === 'timed_out' || mapped === 'canceled') && e.text)
           k.setError(e.text);
         break;

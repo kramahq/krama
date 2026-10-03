@@ -255,7 +255,15 @@ export type TaskState =
 
 /** Normalised events from an agent turn (A2A task state plus the wrapper's sideband). */
 export type GatewayEvent =
-  | { kind: 'state'; state: TaskState; taskId: string; contextId?: string; text?: string }
+  | {
+      kind: 'state';
+      state: TaskState;
+      taskId: string;
+      contextId?: string;
+      text?: string;
+      /** Set when `input_required` is a structured permission request rather than a question (wrapper task W3). */
+      request?: { type: 'access'; path: string; mode?: 'read' | 'write' };
+    }
   | {
       kind: 'sideband';
       type: 'tool_call' | 'tool_result' | 'thinking' | 'status' | 'message';

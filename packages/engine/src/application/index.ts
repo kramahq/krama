@@ -22,10 +22,11 @@ export interface Engine {
 export function createEngine(ports: Ports, policy: Policy = {}): Engine {
   const ctx: Ctx = { p: ports, policy };
   const budget = new BudgetService(ctx);
+  const decisions = new DecisionService(ctx);
   return {
     runs: new RunService(ctx),
-    decisions: new DecisionService(ctx),
+    decisions,
     budget,
-    steps: new StepService(ctx, budget),
+    steps: new StepService(ctx, budget, decisions),
   };
 }
