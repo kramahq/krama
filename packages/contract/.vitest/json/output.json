@@ -1,0 +1,335 @@
+{
+  "numTotalTestSuites": 4,
+  "numPassedTestSuites": 4,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 26,
+  "numPassedTests": 26,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1791025529583,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures every fixture file is bound to a schema",
+          "status": "passed",
+          "title": "every fixture file is bound to a schema",
+          "duration": 0.8103749999999934,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures capabilities.json validates",
+          "status": "passed",
+          "title": "capabilities.json validates",
+          "duration": 2.0441249999999798,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures pack-aidlc.json validates",
+          "status": "passed",
+          "title": "pack-aidlc.json validates",
+          "duration": 3.137875000000008,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures run-awaiting-decision.json validates",
+          "status": "passed",
+          "title": "run-awaiting-decision.json validates",
+          "duration": 1.9725839999999835,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures decision-review.json validates",
+          "status": "passed",
+          "title": "decision-review.json validates",
+          "duration": 1.0982500000000073,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures decision-access.json validates",
+          "status": "passed",
+          "title": "decision-access.json validates",
+          "duration": 0.35104200000000674,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures decision-multi-approver.json validates",
+          "status": "passed",
+          "title": "decision-multi-approver.json validates",
+          "duration": 0.3591250000000059,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures artifact-doc.json validates",
+          "status": "passed",
+          "title": "artifact-doc.json validates",
+          "duration": 0.6534999999999798,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures artifact-video.json validates",
+          "status": "passed",
+          "title": "artifact-video.json validates",
+          "duration": 0.3393329999999821,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures memory-proposal.json validates",
+          "status": "passed",
+          "title": "memory-proposal.json validates",
+          "duration": 0.8254999999999768,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures schedule.json validates",
+          "status": "passed",
+          "title": "schedule.json validates",
+          "duration": 1.0577499999999986,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures project.json validates",
+          "status": "passed",
+          "title": "project.json validates",
+          "duration": 0.579624999999993,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures agent.json validates",
+          "status": "passed",
+          "title": "agent.json validates",
+          "duration": 0.5642500000000155,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures agent-definition.json validates",
+          "status": "passed",
+          "title": "agent-definition.json validates",
+          "duration": 0.7965420000000165,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures backend-descriptor.json validates",
+          "status": "passed",
+          "title": "backend-descriptor.json validates",
+          "duration": 1.5251249999999743,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures problem-consent-incomplete.json validates",
+          "status": "passed",
+          "title": "problem-consent-incomplete.json validates",
+          "duration": 0.3581249999999727,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures operation-preview.json validates",
+          "status": "passed",
+          "title": "operation-preview.json validates",
+          "duration": 0.34225000000000705,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures events.json validates as event envelopes",
+          "status": "passed",
+          "title": "events.json validates as event envelopes",
+          "duration": 0.4022909999999911,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures cost may be null (not reported) and is never required to be a number",
+          "status": "passed",
+          "title": "cost may be null (not reported) and is never required to be a number",
+          "duration": 0.3023330000000044,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures decision need defaults to 1 and access kind carries a path",
+          "status": "passed",
+          "title": "decision need defaults to 1 and access kind carries a path",
+          "duration": 0.17458400000001006,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["fixtures"],
+          "fullName": "fixtures rejects an unknown run status",
+          "status": "passed",
+          "title": "rejects an unknown run status",
+          "duration": 0.1257500000000107,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791025529747,
+      "endTime": 1791025529765.3022,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/skgs/Views/projects/software-factory/kramahq/krama/packages/contract/test/fixtures.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["openapi"],
+          "fullName": "openapi is OpenAPI 3.1 for v1",
+          "status": "passed",
+          "title": "is OpenAPI 3.1 for v1",
+          "duration": 0.6313330000000121,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["openapi"],
+          "fullName": "openapi has one operation per route with unique operationIds",
+          "status": "passed",
+          "title": "has one operation per route with unique operationIds",
+          "duration": 0.14920900000001325,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["openapi"],
+          "fullName": "openapi every $ref resolves to a component schema",
+          "status": "passed",
+          "title": "every $ref resolves to a component schema",
+          "duration": 1.488917000000015,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["openapi"],
+          "fullName": "openapi covers the Cut 1 endpoints",
+          "status": "passed",
+          "title": "covers the Cut 1 endpoints",
+          "duration": 0.11974999999998204,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": ["openapi"],
+          "fullName": "openapi does not forbid unknown properties (additive v1)",
+          "status": "passed",
+          "title": "does not forbid unknown properties (additive v1)",
+          "duration": 0.5386670000000038,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791025529753,
+      "endTime": 1791025529755.5386,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/skgs/Views/projects/software-factory/kramahq/krama/packages/contract/test/openapi.test.ts"
+    }
+  ]
+}

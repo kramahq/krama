@@ -15,12 +15,14 @@
     },
     "./fixtures/*": "./fixtures/*",
     "./openapi.json": "./openapi.json",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./schemas/*": "./schemas/*"
   },
   "files": [
     "dist",
     "fixtures",
-    "openapi.json"
+    "openapi.json",
+    "schemas"
   ],
   "scripts": {
     "build": "tsc -b",

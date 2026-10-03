@@ -4,6 +4,7 @@ import type {
   AgentDefinition,
   Artifact,
   AuditEntry,
+  BackendDescriptor,
   Capabilities,
   Decision,
   EventEnvelope,
@@ -32,6 +33,7 @@ import {
 
 export interface MockState {
   capabilities: Capabilities;
+  backends: BackendDescriptor[];
   packs: Pack[];
   definitions: AgentDefinition[];
   projects: Project[];
@@ -59,8 +61,21 @@ export interface MockState {
 const clone = <T>(v: T): T => structuredClone(v);
 
 export function createState(): MockState {
+  const capabilities = fixture<Capabilities>('capabilities.json');
+  const template = fixture<BackendDescriptor>('backend-descriptor.json');
+  const backends = capabilities.backends.map((b): BackendDescriptor => ({
+    ...template,
+    id: b.wrapper,
+    label: b.label,
+    providerKey: b.wrapper.replace(/^a2a-/, ''),
+    models: b.models,
+    origin: 'builtin',
+    package: { name: b.wrapper, bin: b.wrapper, install: `npm i -g ${b.wrapper}` },
+    capabilities: { ...template.capabilities, canOrchestrate: b.canOrchestrate },
+  }));
   return {
-    capabilities: fixture<Capabilities>('capabilities.json'),
+    capabilities,
+    backends,
     packs: clone(packs),
     definitions: clone(definitions),
     projects: clone(projects),

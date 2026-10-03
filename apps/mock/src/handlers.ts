@@ -508,6 +508,10 @@ export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<stri
       ),
     getPackInputsSchema: (req) => find(s.packs, req.params.id!, 'Pack').inputsSchema,
 
+    // Backends
+    listBackends: (req) => page(s.backends, req.query),
+    getBackend: (req) => find(s.backends, req.params.id!, 'Backend'),
+
     // Agent definitions / projects
     listAgentDefinitions: (req) =>
       filtered(

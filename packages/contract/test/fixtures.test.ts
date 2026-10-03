@@ -6,6 +6,7 @@ import {
   agent,
   agentDefinition,
   artifact,
+  backendDescriptor,
   capabilities,
   decision,
   eventEnvelope,
@@ -35,6 +36,7 @@ const bindings: Record<string, z.ZodType> = {
   'project.json': project,
   'agent.json': agent,
   'agent-definition.json': agentDefinition,
+  'backend-descriptor.json': backendDescriptor,
   'problem-consent-incomplete.json': problem,
   'operation-preview.json': operation,
 };

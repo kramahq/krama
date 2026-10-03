@@ -1,7 +1,9 @@
 {
   "apiVersion": "v1",
   "engineVersion": "0.0.0-mock",
-  "a2a": { "versions": ["1.0", "0.3"] },
+  "a2a": {
+    "versions": ["1.0", "0.3"]
+  },
   "features": {
     "runs": true,
     "decisions": true,
@@ -14,7 +16,10 @@
       "export": ["pam"],
       "gitSync": false
     },
-    "schedules": { "enabled": true, "triggers": ["cron", "once"] },
+    "schedules": {
+      "enabled": true,
+      "triggers": ["cron", "once"]
+    },
     "packTests": true,
     "builder": true,
     "typedArtifacts": true,
@@ -26,9 +31,24 @@
     }
   },
   "workItemSources": [
-    { "id": "jira", "label": "Jira", "searchable": true, "connected": true },
-    { "id": "github", "label": "GitHub Issues", "searchable": true, "connected": false },
-    { "id": "text", "label": "Free text", "searchable": false, "connected": true }
+    {
+      "id": "jira",
+      "label": "Jira",
+      "searchable": true,
+      "connected": true
+    },
+    {
+      "id": "github",
+      "label": "GitHub Issues",
+      "searchable": true,
+      "connected": false
+    },
+    {
+      "id": "text",
+      "label": "Free text",
+      "searchable": false,
+      "connected": true
+    }
   ],
   "backends": [
     {
@@ -37,7 +57,12 @@
       "models": ["claude-opus-5-5", "claude-sonnet-5-5"],
       "canOrchestrate": true
     },
-    { "wrapper": "a2a-codex", "label": "Codex", "models": ["gpt-5-codex"], "canOrchestrate": true },
+    {
+      "wrapper": "a2a-codex",
+      "label": "Codex",
+      "models": ["gpt-5-codex"],
+      "canOrchestrate": true
+    },
     {
       "wrapper": "a2a-antigravity",
       "label": "Gemini (Antigravity)",
@@ -49,6 +74,12 @@
       "label": "GitHub Copilot",
       "models": ["claude-opus-4.6"],
       "canOrchestrate": false
+    },
+    {
+      "wrapper": "a2a-opencode",
+      "label": "OpenCode",
+      "models": ["github-copilot/claude-sonnet-4.5"],
+      "canOrchestrate": true
     }
   ],
   "viewers": [
@@ -66,7 +97,10 @@
   "limits": {
     "maxUploadBytes": 536870912,
     "maxRunsConcurrent": 10,
-    "agentCapacity": { "used": 7, "max": 90 }
+    "agentCapacity": {
+      "used": 7,
+      "max": 90
+    }
   },
   "deprecations": []
 }

@@ -1,5 +1,6 @@
 import type {
   ActorRef,
+  BackendDescriptor,
   Artifact,
   AuditEntry,
   Decision,
@@ -274,6 +275,12 @@ export interface SendMessage {
   signal?: AbortSignal;
 }
 
+/** Read access to registered backends (A2A wrappers). Adding a provider adds a descriptor; the engine never changes. */
+export interface BackendCatalog {
+  list(): BackendDescriptor[];
+  get(id: string): BackendDescriptor | undefined;
+}
+
 export interface AgentGateway {
   send(agent: AgentRef, message: SendMessage): AsyncIterable<GatewayEvent>;
   cancel(agent: AgentRef, taskId: string): Promise<void>;
@@ -330,4 +337,5 @@ export interface Ports {
   gateway?: AgentGateway;
   executor?: RunExecutor;
   workItems?: readonly WorkItemSource[];
+  backends?: BackendCatalog;
 }

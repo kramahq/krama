@@ -18,6 +18,7 @@ const sample = (path: string): string =>
     .replace(/^\/decisions\/\{id\}/, '/decisions/dec_INPUT')
     .replace(/^\/artifacts\/\{id\}/, '/artifacts/art_req1')
     .replace(/^\/packs\/\{id\}/, '/packs/pack_aidlc')
+    .replace(/^\/backends\/\{id\}/, '/backends/a2a-codex')
     .replace(/^\/agents\/\{id\}/, '/agents/agt_dev1')
     .replace(/^\/projects\/\{id\}/, '/projects/proj_payments')
     .replace(/^\/schedules\/\{id\}/, '/schedules/sch_nightly_deps')
