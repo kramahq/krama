@@ -1,1 +1,1 @@
-export const PACKAGE_NAME = '@kramahq/artifacts-fs';
+export * from './store.js';
