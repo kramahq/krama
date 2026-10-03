@@ -556,20 +556,36 @@ export class InMemoryMemoryStore implements MemoryStore {
   }
 }
 
-/** Scripted agent: replays the events queued for a role, so a run can complete with no real backend. */
+/** A scripted turn: a fixed list of events, or a function that plays the agent (e.g. calls MCP tools like a real LLM would). */
+export type GatewayTurn =
+  | GatewayEvent[]
+  | ((
+      message: SendMessage,
+      agent: AgentRef,
+    ) => AsyncIterable<GatewayEvent> | GatewayEvent[] | Promise<GatewayEvent[]>);
+
+/** Scripted agent: replays the turns queued for a role, so a run can complete with no real backend. */
 export class FakeAgentGateway implements AgentGateway {
-  readonly sent: { agent: AgentRef; text: string }[] = [];
+  readonly sent: { agent: AgentRef; text: string; contextId?: string }[] = [];
   readonly canceled: string[] = [];
-  constructor(private readonly script: Record<string, GatewayEvent[][]> = {}) {}
-  queue(role: string, ...turns: GatewayEvent[][]): void {
+  constructor(private readonly script: Record<string, GatewayTurn[]> = {}) {}
+  queue(role: string, ...turns: GatewayTurn[]): void {
     (this.script[role] ??= []).push(...turns);
   }
   async *send(agent: AgentRef, message: SendMessage): AsyncIterable<GatewayEvent> {
-    this.sent.push({ agent, text: message.text });
+    this.sent.push({
+      agent,
+      text: message.text,
+      ...(message.contextId ? { contextId: message.contextId } : {}),
+    });
     const turn = this.script[agent.role]?.shift() ?? [
       { kind: 'state', state: 'completed', taskId: `task_${agent.role}` },
     ];
-    for (const e of turn) yield e;
+    const events = typeof turn === 'function' ? await turn(message, agent) : turn;
+    for await (const e of events as AsyncIterable<GatewayEvent> | GatewayEvent[]) {
+      if (message.signal?.aborted) return;
+      yield e;
+    }
   }
   async cancel(_agent: AgentRef, taskId: string) {
     this.canceled.push(taskId);

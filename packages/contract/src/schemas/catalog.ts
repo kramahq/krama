@@ -77,6 +77,8 @@ export const methodology = z.object({
   gates: z.array(gateRule),
   evaluators: z.array(evaluatorRule),
   iteration: z.object({ unit: z.string(), label: z.string() }).optional(),
+  /** Markdown guidance for the orchestrator: how this methodology works, what good looks like. Rendered into its prompt. */
+  guidance: z.string().optional(),
 });
 export type Methodology = z.infer<typeof methodology>;
 
