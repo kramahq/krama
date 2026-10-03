@@ -40,7 +40,6 @@ export function resolveRoster(
   for (const entry of roster) {
     const { select } = entry;
     let chosen: Candidate | undefined;
-    let alternatives: Candidate[] = [];
     let reason = '';
 
     if (select.definitionId) {
@@ -78,7 +77,7 @@ export function resolveRoster(
       // A pinned backend is a requirement for roster selection, not just a preference.
       const eligible = select.backend ? ranked.filter((c) => c.backendMatch) : ranked;
       chosen = eligible[0];
-      alternatives = ranked.filter((c) => c !== chosen);
+      const alternatives = ranked.filter((c) => c !== chosen);
       if (!chosen)
         reason = ranked.length
           ? `no usable definition runs on ${select.backend}`
