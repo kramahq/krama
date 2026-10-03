@@ -339,3 +339,4 @@ export const eventTicket = z.object({ ticket: z.string(), expiresAt: iso });
 
 // Re-exported for the route table
 export { jsonSchema };
+export type MemoryScope = z.infer<typeof memoryScope>;
