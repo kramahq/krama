@@ -5,6 +5,7 @@ import { createEngine, VersionConflictError, type RunRecord } from '@kramahq/eng
 import {
   authorReviewerPack,
   createFakePorts,
+  eventLogContract,
   sampleRun,
   storeContract,
 } from '@kramahq/engine/testing';
@@ -39,12 +40,38 @@ describe.skipIf(!pgUrl)('Postgres', () => {
   });
 });
 
+describe('PGlite event log', () => {
+  eventLogContract(
+    { describe, it, expect } as never,
+    async (o) =>
+      (await track(openPglite(undefined, { retainCount: o?.retain ?? 100_000, retainMs: 0 })))
+        .events,
+    { supportsRetention: true },
+  );
+});
+
+describe.skipIf(!pgUrl)('Postgres event log', () => {
+  eventLogContract(
+    { describe, it, expect } as never,
+    async (o) => {
+      const opened = await track(
+        openPostgres(pgUrl!, { retainCount: o?.retain ?? 100_000, retainMs: 0 }),
+      );
+      await opened.db.execute(
+        (await import('drizzle-orm')).sql.raw('truncate events restart identity'),
+      );
+      return opened.events;
+    },
+    { supportsRetention: true },
+  );
+});
+
 describe('persistence', () => {
   it('survives a restart, including in a data directory whose path has spaces', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'krama store with spaces-'));
     try {
       const a = await openPglite(dir);
-      expect(a.applied).toEqual(['0000_init']);
+      expect(a.applied).toEqual(['0000_init', '0001_events']);
       await a.store.runs.put(sampleRun('run_1'));
       await a.store.audit.append({
         id: 'aud_1',
@@ -53,12 +80,38 @@ describe('persistence', () => {
         action: 'x',
         subject: { type: 'run', id: 'run_1' },
       });
+      await a.events.append({
+        type: 'run.created',
+        subject: { type: 'run', id: 'run_1' },
+        runId: 'run_1' as never,
+        actor: { type: 'user', id: 'u1' },
+        data: { status: 'planning' },
+      });
       await a.close();
 
       const b = await openPglite(dir);
       expect(b.applied).toEqual([]); // migrations are idempotent
       expect((await b.store.runs.get('run_1'))?.value.run.title).toBe('Run run_1');
       expect((await b.store.audit.list()).items).toHaveLength(1);
+      // Events survive a restart with their cursor, actor and data; new events continue the sequence.
+      expect(await b.events.read()).toEqual([
+        expect.objectContaining({
+          id: '000000001',
+          type: 'run.created',
+          runId: 'run_1',
+          actor: { type: 'user', id: 'u1' },
+          data: { status: 'planning' },
+        }),
+      ]);
+      expect(
+        (
+          await b.events.append({
+            type: 'run.updated',
+            subject: { type: 'run', id: 'run_1' },
+            data: {},
+          })
+        ).id,
+      ).toBe('000000002');
       await b.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });
