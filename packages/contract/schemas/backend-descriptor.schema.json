@@ -1,0 +1,278 @@
+{
+  "title": "Krama backend descriptor",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "label": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "package": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "bin": {
+          "type": "string"
+        },
+        "install": {
+          "type": "string"
+        },
+        "docs": {
+          "type": "string"
+        },
+        "minVersion": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "bin", "install"]
+    },
+    "launch": {
+      "type": "object",
+      "properties": {
+        "defaultPort": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "readyPath": {
+          "default": "/.well-known/agent-card.json",
+          "type": "string"
+        },
+        "startupTimeoutMs": {
+          "default": 60000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "extraArgs": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["defaultPort"]
+    },
+    "providerKey": {
+      "type": "string"
+    },
+    "mapping": {
+      "type": "object",
+      "properties": {
+        "workspace": {
+          "type": "string"
+        },
+        "model": {
+          "default": "model",
+          "type": "string"
+        },
+        "systemPrompt": {
+          "type": "string"
+        },
+        "allowedTools": {
+          "type": "string"
+        }
+      },
+      "required": ["workspace"]
+    },
+    "options": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": ["string", "number", "boolean", "enum", "string[]", "object", "any"]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "default": {},
+          "required": {
+            "type": "boolean"
+          },
+          "env": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "secret": {
+            "type": "boolean"
+          }
+        },
+        "required": ["key", "type", "description"]
+      }
+    },
+    "env": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "type": "boolean"
+          },
+          "secret": {
+            "default": false,
+            "type": "boolean"
+          },
+          "group": {
+            "type": "string"
+          }
+        },
+        "required": ["name", "description"]
+      }
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["binary", "service", "runtime", "account"]
+          },
+          "check": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "expect": {
+                    "type": "string"
+                  }
+                },
+                "required": ["command"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["url"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "manual": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": ["manual"]
+              }
+            ]
+          },
+          "optional": {
+            "type": "boolean"
+          },
+          "install": {
+            "type": "object",
+            "properties": {
+              "any": {
+                "type": "string"
+              },
+              "macos": {
+                "type": "string"
+              },
+              "linux": {
+                "type": "string"
+              },
+              "windows": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": ["id", "description", "kind", "check"]
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "canOrchestrate": {
+          "type": "boolean"
+        },
+        "cost": {
+          "type": "string",
+          "enum": ["reported", "partial", "not_reported", "unknown"]
+        },
+        "sideband": {
+          "type": "boolean"
+        },
+        "resumableSessions": {
+          "type": "boolean"
+        }
+      },
+      "required": ["canOrchestrate", "cost", "sideband", "resumableSessions"]
+    },
+    "models": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "origin": {
+      "type": "string",
+      "enum": ["builtin", "user", "pack"]
+    }
+  },
+  "required": [
+    "id",
+    "label",
+    "package",
+    "launch",
+    "providerKey",
+    "mapping",
+    "options",
+    "env",
+    "prerequisites",
+    "capabilities"
+  ]
+}

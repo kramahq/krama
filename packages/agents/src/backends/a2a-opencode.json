@@ -1,0 +1,125 @@
+{
+  "$schema": "../../../contract/schemas/backend-descriptor.schema.json",
+  "id": "a2a-opencode",
+  "label": "OpenCode",
+  "description": "OpenCode through its local server API.",
+  "package": {
+    "name": "a2a-opencode",
+    "bin": "a2a-opencode",
+    "install": "npm i -g a2a-opencode",
+    "docs": "https://a2a-wrapper.allsrc.dev",
+    "minVersion": "1.7.2"
+  },
+  "launch": {
+    "defaultPort": 3000,
+    "readyPath": "/.well-known/agent-card.json",
+    "startupTimeoutMs": 60000,
+    "extraArgs": []
+  },
+  "providerKey": "opencode",
+  "mapping": {
+    "workspace": "projectDirectory",
+    "model": "model",
+    "systemPrompt": "systemPrompt"
+  },
+  "options": [
+    {
+      "key": "agent",
+      "type": "string",
+      "description": "Default agent (e.g."
+    },
+    {
+      "key": "baseUrl",
+      "type": "string",
+      "description": "OpenCode server base URL (default: \"http://localhost:4096\")"
+    },
+    {
+      "key": "contextFile",
+      "type": "string",
+      "description": "Filename for the pre-built domain context file in the workspace directory."
+    },
+    {
+      "key": "contextPrompt",
+      "type": "string",
+      "description": "Default prompt sent to OpenCode to build the domain context file."
+    },
+    {
+      "key": "model",
+      "type": "string",
+      "description": "Default model (e.g."
+    },
+    {
+      "key": "projectDirectory",
+      "type": "string",
+      "description": "Target project directory for all OpenCode API calls"
+    },
+    {
+      "key": "systemPrompt",
+      "type": "string",
+      "description": "System prompt prepended to the first message of every session."
+    },
+    {
+      "key": "systemPromptMode",
+      "type": "enum",
+      "values": ["append", "replace"],
+      "description": "How the system prompt is applied when injected into the first user message."
+    }
+  ],
+  "env": [
+    {
+      "name": "OPENCODE_URL",
+      "description": "URL of the running OpenCode server (default http://localhost:4096)."
+    },
+    {
+      "name": "OPENCODE_MODEL",
+      "description": "Model as provider/model."
+    },
+    {
+      "name": "OPENCODE_AGENT",
+      "description": "OpenCode agent preset."
+    }
+  ],
+  "prerequisites": [
+    {
+      "id": "node",
+      "description": "Node.js 20 or newer",
+      "kind": "runtime",
+      "check": {
+        "command": ["node", "--version"],
+        "expect": "^v(2\\d|[3-9]\\d)"
+      },
+      "install": {
+        "any": "https://nodejs.org"
+      }
+    },
+    {
+      "id": "wrapper",
+      "description": "a2a-opencode is installed",
+      "kind": "binary",
+      "check": {
+        "command": ["a2a-opencode", "--version"]
+      },
+      "install": {
+        "any": "npm i -g a2a-opencode"
+      }
+    },
+    {
+      "id": "server",
+      "description": "An OpenCode server is running (opencode serve)",
+      "kind": "service",
+      "check": {
+        "url": "http://localhost:4096/"
+      },
+      "install": {
+        "any": "Install OpenCode (opencode.ai) and run `opencode serve`."
+      }
+    }
+  ],
+  "capabilities": {
+    "canOrchestrate": true,
+    "cost": "unknown",
+    "sideband": true,
+    "resumableSessions": true
+  },
+  "models": []
+}

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { API_BASE_PATH, jsonSchema, page } from './schemas/common.js';
+import { backendCheckResult, backendDescriptor } from './schemas/backends.js';
 import {
   activityItem,
   artifact,
@@ -548,6 +549,29 @@ const asyncOp: Opts = { status: 202, response: operation };
     status: 204,
     ...later(),
   });
+}
+
+{
+  const d = def('Backends');
+  d(
+    'GET',
+    '/backends',
+    'listBackends',
+    'Registered backends (A2A wrappers) with options, env and prerequisites',
+    'viewer',
+    { query: q(), response: page(backendDescriptor) },
+  );
+  d('GET', '/backends/{id}', 'getBackend', 'Backend descriptor', 'viewer', {
+    response: backendDescriptor,
+  });
+  d(
+    'POST',
+    '/backends/{id}/check',
+    'checkBackend',
+    'Run the backend prerequisite checks (krama doctor)',
+    'operator',
+    { response: backendCheckResult, ...later() },
+  );
 }
 
 // ---- D. Fleet --------------------------------------------------------------

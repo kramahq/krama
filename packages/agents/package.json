@@ -12,7 +12,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./backends/*": "./src/backends/*"
   },
   "files": [
     "dist"
@@ -20,6 +21,17 @@
   "scripts": {
     "build": "tsc -b",
     "test": "vitest run --passWithNoTests",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "backend:scaffold": "node scripts/scaffold-backend.ts",
+    "backend:docs": "node scripts/gen-backend-docs.ts"
+  },
+  "dependencies": {
+    "@kramahq/contract": "workspace:*",
+    "@kramahq/engine": "workspace:*",
+    "cross-spawn": "^7.0.6",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "^6.0.6"
   }
 }

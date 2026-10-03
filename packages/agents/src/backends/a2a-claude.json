@@ -1,0 +1,197 @@
+{
+  "$schema": "../../../contract/schemas/backend-descriptor.schema.json",
+  "id": "a2a-claude",
+  "label": "Claude",
+  "description": "Anthropic Claude via the Claude Agent SDK.",
+  "package": {
+    "name": "a2a-claude",
+    "bin": "a2a-claude",
+    "install": "npm i -g a2a-claude",
+    "docs": "https://a2a-wrapper.allsrc.dev",
+    "minVersion": "0.4.1"
+  },
+  "launch": {
+    "defaultPort": 3030,
+    "readyPath": "/.well-known/agent-card.json",
+    "startupTimeoutMs": 60000,
+    "extraArgs": []
+  },
+  "providerKey": "claude",
+  "mapping": {
+    "workspace": "workingDirectory",
+    "model": "model",
+    "systemPrompt": "systemPromptAppend",
+    "allowedTools": "allowedTools"
+  },
+  "options": [
+    {
+      "key": "additionalDirectories",
+      "type": "string[]",
+      "description": "Additional directories Claude can access."
+    },
+    {
+      "key": "allowedTools",
+      "type": "string[]",
+      "description": "Tools auto-allowed without prompting."
+    },
+    {
+      "key": "contextFile",
+      "type": "string",
+      "description": "Filename for the pre-built domain context file within workingDirectory.",
+      "default": "context.md"
+    },
+    {
+      "key": "contextPrompt",
+      "type": "string",
+      "description": "Default prompt used when buildContext() is called without an explicit prompt."
+    },
+    {
+      "key": "customSystemPrompt",
+      "type": "string",
+      "description": "Full system prompt replacement."
+    },
+    {
+      "key": "dangerouslyAllowBypassPermissions",
+      "type": "boolean",
+      "description": "Must be true when permissionMode is \"bypassPermissions\".",
+      "risk": "high"
+    },
+    {
+      "key": "disallowedTools",
+      "type": "string[]",
+      "description": "Tools removed from the model's context entirely."
+    },
+    {
+      "key": "effort",
+      "type": "enum",
+      "values": ["low", "medium", "high", "xhigh", "max"],
+      "description": "Reasoning effort level."
+    },
+    {
+      "key": "enabledPlugins",
+      "type": "object",
+      "description": "Plugins to enable, keyed `\"<plugin-id>@<marketplace-id>\"`, where the marketplace id must appear in `marketplaces`."
+    },
+    {
+      "key": "executablePathOverride",
+      "type": "string",
+      "description": "Override the path to the Claude executable."
+    },
+    {
+      "key": "fallbackModel",
+      "type": "string",
+      "description": "Fallback model when the primary is overloaded/unavailable."
+    },
+    {
+      "key": "marketplaces",
+      "type": "object",
+      "description": "Plugin marketplaces to register for the session, keyed by marketplace id."
+    },
+    {
+      "key": "maxBudgetUsd",
+      "type": "number",
+      "description": "Max budget in USD per query."
+    },
+    {
+      "key": "maxTurns",
+      "type": "number",
+      "description": "Max conversation turns per query (runaway protection)."
+    },
+    {
+      "key": "model",
+      "type": "string",
+      "description": "Model (e.g."
+    },
+    {
+      "key": "permissionMode",
+      "type": "enum",
+      "values": ["acceptEdits", "dontAsk", "plan", "bypassPermissions"],
+      "description": "Permission mode.",
+      "risk": "high"
+    },
+    {
+      "key": "sandbox",
+      "type": "object",
+      "description": "Opaque SDK sandbox settings passthrough (OS-level command sandboxing)."
+    },
+    {
+      "key": "settingSources",
+      "type": "string[]",
+      "description": "Filesystem settings sources to load."
+    },
+    {
+      "key": "systemPromptAppend",
+      "type": "string",
+      "description": "Appended to the claude_code preset system prompt (developerInstructions analog)."
+    },
+    {
+      "key": "thinking",
+      "type": "any",
+      "description": "Extended thinking behavior."
+    },
+    {
+      "key": "workingDirectory",
+      "type": "string",
+      "description": "Absolute path to the workspace Claude operates on."
+    }
+  ],
+  "env": [
+    {
+      "name": "ANTHROPIC_API_KEY",
+      "description": "Anthropic API key for the Claude Agent SDK.",
+      "required": true,
+      "secret": true
+    },
+    {
+      "name": "CLAUDE_MODEL",
+      "description": "Model override (same as options.model)."
+    },
+    {
+      "name": "CLAUDE_EFFORT",
+      "description": "Reasoning effort override."
+    }
+  ],
+  "prerequisites": [
+    {
+      "id": "node",
+      "description": "Node.js 20 or newer",
+      "kind": "runtime",
+      "check": {
+        "command": ["node", "--version"],
+        "expect": "^v(2\\d|[3-9]\\d)"
+      },
+      "install": {
+        "any": "https://nodejs.org"
+      }
+    },
+    {
+      "id": "wrapper",
+      "description": "a2a-claude is installed",
+      "kind": "binary",
+      "check": {
+        "command": ["a2a-claude", "--version"]
+      },
+      "install": {
+        "any": "npm i -g a2a-claude"
+      }
+    },
+    {
+      "id": "auth",
+      "description": "ANTHROPIC_API_KEY is available to the agent",
+      "kind": "account",
+      "check": {
+        "manual": true
+      },
+      "install": {
+        "any": "Create a key at console.anthropic.com and bind it as a secret."
+      }
+    }
+  ],
+  "capabilities": {
+    "canOrchestrate": true,
+    "cost": "unknown",
+    "sideband": true,
+    "resumableSessions": true
+  },
+  "models": ["claude-opus-5-5", "claude-sonnet-5-5"]
+}

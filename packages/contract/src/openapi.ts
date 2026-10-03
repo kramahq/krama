@@ -4,6 +4,7 @@ import { API_VERSION } from './version.js';
 import * as work from './schemas/work.js';
 import * as catalog from './schemas/catalog.js';
 import * as platform from './schemas/platform.js';
+import * as backends from './schemas/backends.js';
 import { ROUTES, type RouteDef } from './routes.js';
 
 type Json = Record<string, unknown>;
@@ -37,6 +38,8 @@ const NAMED: Record<string, z.ZodType> = {
   Schedule: platform.schedule,
   Operation: platform.operation,
   AuditEntry: platform.auditEntry,
+  BackendDescriptor: backends.backendDescriptor,
+  BackendCheckResult: backends.backendCheckResult,
   Capabilities: platform.capabilities,
   EventEnvelope: platform.eventEnvelope,
   Me: platform.me,

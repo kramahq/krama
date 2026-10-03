@@ -1,0 +1,138 @@
+{
+  "$schema": "../../../contract/schemas/backend-descriptor.schema.json",
+  "id": "a2a-copilot",
+  "label": "GitHub Copilot",
+  "description": "GitHub Copilot via the Copilot SDK.",
+  "package": {
+    "name": "a2a-copilot",
+    "bin": "a2a-copilot",
+    "install": "npm i -g a2a-copilot",
+    "docs": "https://a2a-wrapper.allsrc.dev",
+    "minVersion": "1.8.2"
+  },
+  "launch": {
+    "defaultPort": 3000,
+    "readyPath": "/.well-known/agent-card.json",
+    "startupTimeoutMs": 60000,
+    "extraArgs": []
+  },
+  "providerKey": "copilot",
+  "mapping": {
+    "workspace": "workspaceDirectory",
+    "model": "model",
+    "systemPrompt": "systemPrompt"
+  },
+  "options": [
+    {
+      "key": "cliUrl",
+      "type": "string",
+      "description": "External Copilot CLI server URL (e.g."
+    },
+    {
+      "key": "contextFile",
+      "type": "string",
+      "description": "Filename for the pre-built domain context file in the workspace directory."
+    },
+    {
+      "key": "contextPrompt",
+      "type": "string",
+      "description": "Default prompt sent to build the domain context file."
+    },
+    {
+      "key": "githubToken",
+      "type": "string",
+      "description": "GitHub Personal Access Token for authentication.",
+      "risk": "high",
+      "secret": true
+    },
+    {
+      "key": "model",
+      "type": "string",
+      "description": "Default model for sessions (e.g."
+    },
+    {
+      "key": "provider",
+      "type": "object",
+      "description": "Custom LLM provider configuration (BYOK — Bring Your Own Key)."
+    },
+    {
+      "key": "streaming",
+      "type": "boolean",
+      "description": "Enable streaming by default on sessions (default: true)"
+    },
+    {
+      "key": "systemPrompt",
+      "type": "string",
+      "description": "System prompt prepended to the first message of every session."
+    },
+    {
+      "key": "systemPromptMode",
+      "type": "enum",
+      "values": ["append", "replace"],
+      "description": "How the system prompt is applied to the SDK-managed system message."
+    },
+    {
+      "key": "workspaceDirectory",
+      "type": "string",
+      "description": "Working directory for context file operations"
+    }
+  ],
+  "env": [
+    {
+      "name": "GITHUB_TOKEN",
+      "description": "Token with Copilot access. Needed when `gh` is not authenticated (headless, containers).",
+      "secret": true,
+      "group": "auth"
+    },
+    {
+      "name": "COPILOT_MODEL",
+      "description": "Model override (same as options.model)."
+    }
+  ],
+  "prerequisites": [
+    {
+      "id": "node",
+      "description": "Node.js 20 or newer",
+      "kind": "runtime",
+      "check": {
+        "command": ["node", "--version"],
+        "expect": "^v(2\\d|[3-9]\\d)"
+      },
+      "install": {
+        "any": "https://nodejs.org"
+      }
+    },
+    {
+      "id": "wrapper",
+      "description": "a2a-copilot is installed",
+      "kind": "binary",
+      "check": {
+        "command": ["a2a-copilot", "--version"]
+      },
+      "install": {
+        "any": "npm i -g a2a-copilot"
+      }
+    },
+    {
+      "id": "gh",
+      "description": "GitHub CLI authenticated (or GITHUB_TOKEN set)",
+      "kind": "account",
+      "optional": true,
+      "check": {
+        "command": ["gh", "auth", "status"]
+      },
+      "install": {
+        "macos": "brew install gh && gh auth login",
+        "linux": "https://cli.github.com then gh auth login",
+        "windows": "winget install GitHub.cli, then gh auth login"
+      }
+    }
+  ],
+  "capabilities": {
+    "canOrchestrate": false,
+    "cost": "reported",
+    "sideband": true,
+    "resumableSessions": true
+  },
+  "models": ["gpt-4.1", "claude-sonnet-4.5", "claude-opus-4.6"]
+}

@@ -185,7 +185,17 @@ export const agentDefinition = z.object({
   variant: z.string(),
   name: z.string(),
   description: z.string(),
-  backend: z.object({ wrapper: z.string(), model: z.string().optional() }),
+  backend: z.object({
+    /** Backend id from the registry, e.g. `a2a-codex`. Open set: any registered backend works. */
+    wrapper: z.string(),
+    model: z.string().optional(),
+    /** Provider-specific options, validated against that backend's descriptor. */
+    options: z.record(z.string(), z.unknown()).optional(),
+    /** Settings every wrapper shares (session, timeouts, logging, …). */
+    common: z.record(z.string(), z.unknown()).optional(),
+    /** Environment variable name → secret reference. Values are never stored here. */
+    secrets: z.record(z.string(), z.string()).optional(),
+  }),
   skills: z.array(skillRef),
   mcpServers: z.array(z.string()),
   permissions: z.object({ tools: z.record(z.string(), z.enum(['allow', 'ask', 'off'])) }),

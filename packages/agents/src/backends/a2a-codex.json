@@ -1,0 +1,168 @@
+{
+  "$schema": "../../../contract/schemas/backend-descriptor.schema.json",
+  "id": "a2a-codex",
+  "label": "OpenAI Codex",
+  "description": "OpenAI Codex via the Codex SDK.",
+  "package": {
+    "name": "a2a-codex",
+    "bin": "a2a-codex",
+    "install": "npm i -g a2a-codex",
+    "docs": "https://a2a-wrapper.allsrc.dev",
+    "minVersion": "1.7.2"
+  },
+  "launch": {
+    "defaultPort": 3020,
+    "readyPath": "/.well-known/agent-card.json",
+    "startupTimeoutMs": 60000,
+    "extraArgs": []
+  },
+  "providerKey": "codex",
+  "mapping": {
+    "workspace": "workingDirectory",
+    "model": "model",
+    "systemPrompt": "developerInstructions"
+  },
+  "options": [
+    {
+      "key": "additionalDirectories",
+      "type": "string[]",
+      "description": "Additional directories to make accessible to Codex beyond workingDirectory."
+    },
+    {
+      "key": "approvalPolicy",
+      "type": "enum",
+      "values": ["never", "on-request", "on-failure", "untrusted"],
+      "description": "Tool approval policy for shell commands and MCP tool calls.",
+      "default": "never",
+      "risk": "high"
+    },
+    {
+      "key": "baseUrl",
+      "type": "string",
+      "description": "Override the OpenAI API base URL (useful for corporate proxies)."
+    },
+    {
+      "key": "codexPathOverride",
+      "type": "string",
+      "description": "Override the path to the Codex CLI binary."
+    },
+    {
+      "key": "configOverrides",
+      "type": "object",
+      "description": "Additional Codex configuration overrides passed as CodexOptions.config."
+    },
+    {
+      "key": "contextFile",
+      "type": "string",
+      "description": "Filename for the pre-built domain context file within workingDirectory.",
+      "default": "context.md"
+    },
+    {
+      "key": "contextPrompt",
+      "type": "string",
+      "description": "Default prompt used when buildContext() is called without an explicit prompt."
+    },
+    {
+      "key": "developerInstructions",
+      "type": "string",
+      "description": "Instructions prepended to every Codex prompt as developer context."
+    },
+    {
+      "key": "model",
+      "type": "string",
+      "description": "Model to use (e.g."
+    },
+    {
+      "key": "networkAccessEnabled",
+      "type": "boolean",
+      "description": "Allow Codex to make outbound network requests.",
+      "default": false,
+      "risk": "high"
+    },
+    {
+      "key": "sandboxMode",
+      "type": "enum",
+      "values": ["read-only", "workspace-write", "danger-full-access"],
+      "description": "Codex sandbox mode controlling filesystem access.",
+      "default": "workspace-write",
+      "risk": "high"
+    },
+    {
+      "key": "skipGitRepoCheck",
+      "type": "boolean",
+      "description": "Skip Codex's built-in Git repository validation check.",
+      "default": false
+    },
+    {
+      "key": "webSearchMode",
+      "type": "enum",
+      "values": ["disabled", "cached", "live"],
+      "description": "Web search access for Codex.",
+      "default": "disabled"
+    },
+    {
+      "key": "workingDirectory",
+      "type": "string",
+      "description": "Absolute path to the Git repository Codex should operate on."
+    }
+  ],
+  "env": [
+    {
+      "name": "OPENAI_API_KEY",
+      "description": "OpenAI API key for the Codex SDK.",
+      "required": true,
+      "secret": true
+    }
+  ],
+  "prerequisites": [
+    {
+      "id": "node",
+      "description": "Node.js 20 or newer",
+      "kind": "runtime",
+      "check": {
+        "command": ["node", "--version"],
+        "expect": "^v(2\\d|[3-9]\\d)"
+      },
+      "install": {
+        "any": "https://nodejs.org"
+      }
+    },
+    {
+      "id": "wrapper",
+      "description": "a2a-codex is installed",
+      "kind": "binary",
+      "check": {
+        "command": ["a2a-codex", "--version"]
+      },
+      "install": {
+        "any": "npm i -g a2a-codex"
+      }
+    },
+    {
+      "id": "git",
+      "description": "The workspace is a Git repository (or set options.skipGitRepoCheck)",
+      "kind": "binary",
+      "check": {
+        "command": ["git", "--version"]
+      },
+      "install": {
+        "any": "https://git-scm.com/downloads"
+      }
+    },
+    {
+      "id": "auth",
+      "description": "OPENAI_API_KEY is available to the agent",
+      "kind": "account",
+      "check": {
+        "manual": true
+      }
+    }
+  ],
+  "capabilities": {
+    "canOrchestrate": true,
+    "cost": "unknown",
+    "sideband": true,
+    "resumableSessions": true
+  },
+  "models": ["gpt-5-codex", "o4-mini"]
+}
