@@ -15,7 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "changeset": "changeset",
-    "prepare": "husky || true"
+    "prepare": "husky"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
