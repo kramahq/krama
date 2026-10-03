@@ -12,14 +12,22 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./fixtures/*": "./fixtures/*",
+    "./openapi.json": "./openapi.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "fixtures",
+    "openapi.json"
   ],
   "scripts": {
     "build": "tsc -b",
     "test": "vitest run --passWithNoTests",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "openapi": "tsc -b && node dist/openapi-cli.js"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
   }
 }

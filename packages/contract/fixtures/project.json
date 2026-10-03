@@ -1,0 +1,11 @@
+{
+  "id": "proj_payments",
+  "name": "payments",
+  "description": "Payments service work",
+  "defaultPackId": "pack_aidlc",
+  "workItemSource": "jira",
+  "memoryScope": { "type": "project", "id": "proj_payments" },
+  "budget": { "max": { "amount": 200, "currency": "USD" }, "spent": null },
+  "createdAt": "2026-09-20T08:00:00Z",
+  "links": {}
+}

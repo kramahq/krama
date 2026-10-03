@@ -1,0 +1,15 @@
+{
+  "id": "developer/default",
+  "role": "developer",
+  "variant": "default",
+  "name": "Developer",
+  "description": "Implements units of work.",
+  "backend": { "wrapper": "a2a-codex", "model": "gpt-5-codex" },
+  "skills": [],
+  "mcpServers": ["bitbucket"],
+  "permissions": { "tools": { "shell": "ask", "write": "allow", "network": "off" } },
+  "memory": { "enabled": true, "scopes": [{ "scope": "project", "access": "propose" }] },
+  "capabilities": ["code", "tests"],
+  "source": { "type": "pack", "packId": "pack_aidlc", "sha": "9f3c2ab" },
+  "links": {}
+}

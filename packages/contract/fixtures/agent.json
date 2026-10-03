@@ -1,0 +1,15 @@
+{
+  "id": "agt_dev2",
+  "definitionId": "developer/default",
+  "role": "developer",
+  "backend": "a2a-codex",
+  "model": "gpt-5-codex",
+  "status": "busy",
+  "url": "http://127.0.0.1:41321",
+  "port": 41321,
+  "startedAt": "2026-10-03T09:05:00Z",
+  "assignment": { "runId": "run_01J9AIDLC", "phaseId": "construction" },
+  "workspace": { "mode": "isolated", "path": "/work/run_01J9AIDLC/dev2" },
+  "session": { "contextId": "ctx_1", "resumable": true },
+  "links": {}
+}

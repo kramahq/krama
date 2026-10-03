@@ -1,0 +1,9 @@
+{
+  "type": "https://kramahq.dev/problems/consent_incomplete",
+  "title": "Required permissions were declined",
+  "status": 403,
+  "code": "consent_incomplete",
+  "errors": [
+    { "field": "consent.p3", "message": "script_execution is required by skill run-tests" }
+  ]
+}

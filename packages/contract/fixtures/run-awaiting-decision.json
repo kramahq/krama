@@ -1,0 +1,71 @@
+{
+  "id": "run_01J9AIDLC",
+  "title": "Customer notifications service",
+  "status": "awaiting_decision",
+  "mode": "review",
+  "input": { "text": "Add multi-channel customer notifications to the payments service." },
+  "pack": { "id": "pack_aidlc", "version": "0.3.0", "sha": "9f3c2ab" },
+  "workItem": {
+    "source": "jira",
+    "ref": "PAY-214",
+    "url": "https://jira.example.com/browse/PAY-214"
+  },
+  "orchestrator": {
+    "definitionId": "orchestrator/default",
+    "backend": "a2a-codex",
+    "model": "gpt-5-codex"
+  },
+  "budget": {
+    "max": { "amount": 40, "currency": "USD" },
+    "spent": { "amount": 6.82, "currency": "USD" },
+    "warnAtPct": 80,
+    "onExceed": "pause"
+  },
+  "currentPhaseIds": ["inception"],
+  "pendingDecisions": 1,
+  "trigger": { "type": "manual" },
+  "labels": ["payments"],
+  "createdBy": { "type": "user", "id": "u_1", "name": "Priya" },
+  "createdAt": "2026-10-03T09:00:00Z",
+  "updatedAt": "2026-10-03T09:21:40Z",
+  "phases": [
+    {
+      "id": "inception",
+      "label": "Inception",
+      "agentRoles": ["analyst", "architect"],
+      "dependsOn": [],
+      "status": "awaiting_decision",
+      "iteration": 1,
+      "outcome": {
+        "status": "success",
+        "reason": "Requirements and units of work drafted",
+        "gating": "continue"
+      },
+      "cost": null,
+      "artifactIds": ["art_req1", "art_uow1"]
+    },
+    {
+      "id": "construction",
+      "label": "Construction",
+      "agentRoles": ["developer", "reviewer"],
+      "dependsOn": ["inception"],
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "operations",
+      "label": "Operations",
+      "agentRoles": ["devops"],
+      "dependsOn": ["construction"],
+      "status": "pending",
+      "iteration": 0
+    }
+  ],
+  "links": {
+    "decisions": { "href": "/api/v1/runs/run_01J9AIDLC/decisions" },
+    "artifacts": { "href": "/api/v1/runs/run_01J9AIDLC/artifacts" },
+    "events": { "href": "/api/v1/events?topics=run:run_01J9AIDLC" },
+    "pause": { "href": "/api/v1/runs/run_01J9AIDLC/pause", "method": "POST" },
+    "stop": { "href": "/api/v1/runs/run_01J9AIDLC/stop", "method": "POST" }
+  }
+}

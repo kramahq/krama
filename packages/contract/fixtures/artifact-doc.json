@@ -1,0 +1,20 @@
+{
+  "id": "art_req1",
+  "runId": "run_01J9AIDLC",
+  "phaseId": "inception",
+  "name": "requirements.md",
+  "type": "requirements",
+  "mediaType": "text/markdown",
+  "size": 6120,
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb924",
+  "version": 1,
+  "status": "in_review",
+  "producer": { "type": "agent", "id": "agt_analyst1", "name": "Analyst" },
+  "summary": "Requirements for customer notifications",
+  "renditions": [],
+  "createdAt": "2026-10-03T09:15:00Z",
+  "links": {
+    "content": { "href": "/api/v1/artifacts/art_req1/content" },
+    "versions": { "href": "/api/v1/artifacts/art_req1/versions" }
+  }
+}

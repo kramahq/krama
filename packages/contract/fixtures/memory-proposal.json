@@ -1,0 +1,24 @@
+{
+  "id": "mem_01J9PROP",
+  "scope": { "type": "project", "id": "proj_payments" },
+  "type": "semantic",
+  "kind": "convention",
+  "content": "Integration tests for the payments service must run with `make test-integration`; unit tests alone do not exercise the DB.",
+  "tags": ["testing", "payments"],
+  "status": "proposed",
+  "trust": "trusted",
+  "confidence": { "initial": 0.72, "current": 0.72 },
+  "provenance": {
+    "method": "agent_inference",
+    "runId": "run_01J9AIDLC",
+    "phaseId": "construction",
+    "agent": "developer-2",
+    "evidence": [{ "type": "tool_result", "ref": "act_88231" }]
+  },
+  "contentHash": "sha256:5c1",
+  "version": 1,
+  "access": { "read": ["role:developer"], "write": [] },
+  "createdAt": "2026-10-03T11:04:00Z",
+  "updatedAt": "2026-10-03T11:04:00Z",
+  "links": {}
+}

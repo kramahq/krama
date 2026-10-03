@@ -1,0 +1,47 @@
+{
+  "id": "dec_01J9REV",
+  "kind": "review",
+  "status": "pending",
+  "runId": "run_01J9AIDLC",
+  "phaseId": "inception",
+  "title": "Validate Inception output (Mob Elaboration)",
+  "question": "The analyst proposes **4 units of work** and asks **3 open questions**. Please validate before Construction starts.",
+  "context": {
+    "artifacts": ["art_req1", "art_uow1"],
+    "summary": "Notification channels: email, SMS, push. Open: retention period, opt-out model, regional rules."
+  },
+  "options": [
+    {
+      "id": "approve",
+      "label": "Approve and start Construction",
+      "style": "primary",
+      "effect": "Proceeds to Construction (bolt 1)"
+    },
+    {
+      "id": "answer",
+      "label": "Answer open questions",
+      "style": "neutral",
+      "input": { "required": true, "label": "Your answers", "kind": "markdown" },
+      "effect": "Loops back to Inception with answers"
+    },
+    {
+      "id": "changes",
+      "label": "Request changes",
+      "style": "danger",
+      "input": { "required": true, "label": "What should change?", "kind": "text" },
+      "effect": "Loops back to Inception"
+    },
+    {
+      "id": "autopilot",
+      "label": "Approve and switch to autopilot",
+      "style": "neutral",
+      "effect": "Remaining gates auto-approve except production"
+    }
+  ],
+  "assignees": { "roles": ["approver"] },
+  "need": 1,
+  "deadline": "2026-10-04T09:00:00Z",
+  "onTimeout": "expire",
+  "createdAt": "2026-10-03T09:21:40Z",
+  "links": { "resolve": { "href": "/api/v1/decisions/dec_01J9REV/resolve", "method": "POST" } }
+}

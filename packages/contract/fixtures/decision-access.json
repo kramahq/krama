@@ -1,0 +1,33 @@
+{
+  "id": "dec_01J9ACC",
+  "kind": "access",
+  "status": "pending",
+  "runId": "run_01J9AIDLC",
+  "phaseId": "construction",
+  "title": "Developer asks to read ~/Downloads/spec-v2.pdf",
+  "question": "Agent **developer-2** wants to read a file outside the run workspace.",
+  "access": { "path": "~/Downloads/spec-v2.pdf", "agent": "developer-2", "mode": "read" },
+  "options": [
+    {
+      "id": "allow_once",
+      "label": "Allow once",
+      "style": "primary",
+      "effect": "Grants this single read"
+    },
+    {
+      "id": "allow_project",
+      "label": "Allow for project",
+      "style": "neutral",
+      "effect": "Remembers the grant for this project"
+    },
+    {
+      "id": "deny",
+      "label": "Deny",
+      "style": "danger",
+      "effect": "The agent continues without the file"
+    }
+  ],
+  "need": 1,
+  "createdAt": "2026-10-03T09:40:00Z",
+  "links": { "resolve": { "href": "/api/v1/decisions/dec_01J9ACC/resolve", "method": "POST" } }
+}
