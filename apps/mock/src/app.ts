@@ -6,6 +6,7 @@ import { EventBus, cursorOf, matches } from './bus.js';
 import { buildHandlers } from './handlers.js';
 import { ProblemError } from './problems.js';
 import { registerMockControl } from './control.js';
+import { deepMerge } from './merge.js';
 import { createState, type MockState } from './state.js';
 
 export interface MockOptions {
@@ -18,30 +19,13 @@ export interface MockOptions {
 }
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
+export { deepMerge };
 export interface MockApp {
   app: FastifyInstance;
   state: MockState;
   bus: EventBus;
   reset(): void;
 }
-
-export const deepMerge = <T extends Record<string, any>>(
-  base: T,
-  patch: Record<string, any>,
-): T => {
-  for (const [k, v] of Object.entries(patch)) {
-    base[k as keyof T] = (
-      v &&
-      typeof v === 'object' &&
-      !Array.isArray(v) &&
-      typeof base[k] === 'object' &&
-      base[k] !== null
-        ? deepMerge(base[k], v)
-        : v
-    ) as T[keyof T];
-  }
-  return base;
-};
 
 export async function buildMock(options: MockOptions = {}): Promise<MockApp> {
   const app = Fastify({ logger: false });

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { eventEnvelope, type ActivityItem, type EventEnvelope } from '@kramahq/contract';
 import type { FastifyInstance } from 'fastify';
 import type { EventBus } from './bus.js';
+import { deepMerge } from './merge.js';
 import { ProblemError } from './problems.js';
 import type { MockState } from './state.js';
 
@@ -119,8 +120,7 @@ export function registerMockControl(app: FastifyInstance, ctx: ControlCtx): void
     speed = Math.max(0.1, Number(req.body?.speed) || 1);
     return { speed };
   });
-  app.post<{ Body: Record<string, unknown> }>('/__mock/capabilities', async (req) => {
-    const { deepMerge } = await import('./app.js');
+  app.post<{ Body: Record<string, unknown> }>('/__mock/capabilities', (req) => {
     return deepMerge(ctx.handle.state.capabilities as any, req.body ?? {});
   });
   app.post<{ Body: { paused: boolean } }>('/__mock/stream', (req) => {
