@@ -347,3 +347,6 @@ export const gitStatus = z.object({
   ),
 });
 export const workspaceDiff = z.object({ base: z.string().optional(), diff: z.string() });
+
+export type PhaseStatus = z.infer<typeof phaseStatus>;
+export type StepStatus = z.infer<typeof stepStatus>;

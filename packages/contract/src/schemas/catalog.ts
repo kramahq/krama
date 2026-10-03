@@ -311,3 +311,8 @@ export const installPack = z.object({
   manifestDigest: z.string(),
   consent: z.object({ granted: z.array(z.string()), declined: z.array(z.string()) }),
 });
+
+export type PhaseTemplate = z.infer<typeof phaseTemplate>;
+export type GateRule = z.infer<typeof gateRule>;
+export type EvaluatorRule = z.infer<typeof evaluatorRule>;
+export type RosterEntry = z.infer<typeof rosterEntry>;
