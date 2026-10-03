@@ -13,11 +13,20 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "scenarios"
   ],
   "scripts": {
     "build": "tsc -b",
     "test": "vitest run --passWithNoTests",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "start": "node dist/server.js",
+    "dev": "tsc -b && node dist/server.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@kramahq/contract": "workspace:*",
+    "fastify": "^5.12.5",
+    "zod": "^4.6.5"
   }
 }

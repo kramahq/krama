@@ -14,7 +14,8 @@
       "default": "./dist/index.js"
     },
     "./fixtures/*": "./fixtures/*",
-    "./openapi.json": "./openapi.json"
+    "./openapi.json": "./openapi.json",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
