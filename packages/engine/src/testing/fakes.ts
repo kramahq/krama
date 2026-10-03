@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type {
+  Agent,
   Artifact,
   EventEnvelope,
   MemoryRecord,
@@ -13,8 +14,11 @@ import type { DecisionRecord } from '../domain/decision.js';
 import {
   CursorGoneError,
   VersionConflictError,
+  type AgentFilter,
   type AgentGateway,
   type AgentRef,
+  type AgentRuntime,
+  type SpawnSpec,
   type ArtifactCatalog,
   type ArtifactContent,
   type ArtifactStore,
@@ -572,6 +576,72 @@ export class FakeAgentGateway implements AgentGateway {
   }
 }
 
+/** In-memory AgentRuntime: "spawns" instantly, no processes. Pair with FakeAgentGateway for whole-run tests. */
+export class FakeAgentRuntime implements AgentRuntime {
+  private agents = new Map<string, Agent>();
+  readonly spawned: SpawnSpec[] = [];
+  private n = 0;
+  async spawn(spec: SpawnSpec): Promise<Agent> {
+    this.spawned.push(spec);
+    const id = (spec.instanceId ?? `agt_fake${++this.n}`) as Agent['id'];
+    const a: Agent = {
+      id,
+      definitionId: spec.definition.id,
+      role: spec.definition.role,
+      variant: spec.definition.variant,
+      backend: spec.definition.backend.wrapper,
+      status: spec.assignment ? 'busy' : 'idle',
+      url: `http://127.0.0.1:${40000 + this.n}`,
+      port: 40000 + this.n,
+      startedAt: '2026-10-03T09:00:00.000Z',
+      ...(spec.assignment ? { assignment: spec.assignment } : {}),
+      links: {},
+    };
+    this.agents.set(id, a);
+    return structuredClone(a);
+  }
+  async stop(id: string) {
+    const a = this.agents.get(id);
+    if (a) a.status = 'stopped';
+  }
+  async restart(id: string) {
+    const a = this.agents.get(id);
+    if (!a) throw new Error(`Agent not found: ${id}`);
+    a.status = 'idle';
+    return structuredClone(a);
+  }
+  get(id: string) {
+    const a = this.agents.get(id);
+    return a ? structuredClone(a) : undefined;
+  }
+  list(f: AgentFilter = {}) {
+    return [...this.agents.values()]
+      .filter(
+        (a) =>
+          (!f.status || f.status.includes(a.status)) &&
+          (!f.role || a.role === f.role) &&
+          (!f.runId || a.assignment?.runId === f.runId),
+      )
+      .map((a) => structuredClone(a));
+  }
+  assign(id: string, assignment: Agent['assignment'] | undefined) {
+    const a = this.agents.get(id);
+    if (!a || a.status === 'stopped') return;
+    if (assignment) a.assignment = assignment;
+    else delete a.assignment;
+    a.status = assignment ? 'busy' : 'idle';
+  }
+  ref(id: string): AgentRef | undefined {
+    const a = this.agents.get(id);
+    return a && a.status !== 'stopped'
+      ? { id: a.id, url: a.url, role: a.role, backend: a.backend }
+      : undefined;
+  }
+  async shutdown() {
+    for (const a of this.agents.values()) a.status = 'stopped';
+  }
+}
+
 // ---- Wiring ----------------------------------------------------------------
 
 export interface FakePorts extends Ports {
@@ -584,6 +654,7 @@ export interface FakePorts extends Ports {
   executor: RecordingExecutor;
   memory: InMemoryMemoryStore;
   gateway: FakeAgentGateway;
+  agents: FakeAgentRuntime;
 }
 
 /** A complete set of in-memory ports for tests, demos and the walking skeleton. */
@@ -602,6 +673,7 @@ export function createFakePorts(packs: Pack[] = []): FakePorts {
     executor: new RecordingExecutor(),
     memory: new InMemoryMemoryStore(),
     gateway: new FakeAgentGateway(),
+    agents: new FakeAgentRuntime(),
   };
 }
 

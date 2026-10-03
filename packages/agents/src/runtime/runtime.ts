@@ -320,7 +320,7 @@ export class ProcessAgentRuntime implements AgentRuntime {
     try {
       child = spawn(cmd.command, [...cmd.args, ...plan.args], {
         cwd: workDir,
-        env: { ...base, ...plan.env },
+        env: { ...base, ...plan.env, ...(spec.env ?? {}) },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: process.platform !== 'win32',
         windowsHide: true,

@@ -289,6 +289,8 @@ export interface SpawnSpec {
   allowedTools?: string[];
   /** MCP servers for this agent, in the wrapper's `mcp` config format. */
   mcp?: Record<string, unknown>;
+  /** Extra environment for this process (e.g. a scoped MCP token). Never logged. */
+  env?: Record<string, string>;
 }
 
 export type AgentFilter = { status?: Agent['status'][]; role?: string; runId?: string };
