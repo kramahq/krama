@@ -137,10 +137,24 @@ export interface UsageLedger {
   forRun(runId: string): Promise<UsageEntry[]>;
 }
 
+/** Artifact metadata (blobs live in an `ArtifactStore` adapter such as `artifacts-fs`). */
+export interface ArtifactCatalog {
+  /** Insert or replace by id. */
+  put(artifact: Artifact): Promise<void>;
+  get(id: string): Promise<Artifact | undefined>;
+  /** The artifact that supersedes `id`, if any. */
+  findSuperseding(id: string): Promise<Artifact | undefined>;
+  listByRun(
+    runId: string,
+    filter?: { phaseId?: string; type?: string; status?: Artifact['status'] },
+  ): Promise<Artifact[]>;
+}
+
 export interface Store {
   runs: RunRepository;
   decisions: DecisionRepository;
   steps: StepRepository;
+  artifacts: ArtifactCatalog;
   projects: ProjectRepository;
   audit: AuditLog;
   usage: UsageLedger;

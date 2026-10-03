@@ -19,7 +19,20 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "test": "vitest run --passWithNoTests",
-    "lint": "eslint ."
+    "test": "vitest run",
+    "lint": "eslint .",
+    "db:generate": "drizzle-kit generate --name init && node scripts/embed-migrations.ts",
+    "db:check": "node scripts/embed-migrations.ts --check"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@kramahq/contract": "workspace:*",
+    "@kramahq/engine": "workspace:*",
+    "drizzle-orm": "^0.45.3",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11"
   }
 }

@@ -2,3 +2,5 @@ dist
 node_modules
 .turbo
 pnpm-lock.yaml
+src/migrations.generated.ts
+**/migrations.generated.ts
