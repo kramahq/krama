@@ -321,6 +321,71 @@ describe('other decision kinds', () => {
     expect((await h2.p.store.decisions.get(d2.id))!.value.decision.status).toBe('resolved');
   });
 
+  it('consent and publish decisions settle without touching a run, and the executor is told about every kind of resolution', async () => {
+    const { h } = await started();
+    const consent = await req(h, {
+      kind: 'consent',
+      subject: { type: 'pack', id: 'pack_x' },
+      options: [
+        { id: 'approve', label: 'Install', style: 'primary' },
+        { id: 'decline', label: 'Decline', style: 'danger' },
+      ],
+    });
+    const publish = await req(h, {
+      kind: 'publish',
+      subject: { type: 'draft', id: 'draft_1' },
+      options: [
+        { id: 'approve', label: 'Publish', style: 'primary' },
+        { id: 'reject', label: 'Reject', style: 'danger' },
+      ],
+    });
+    expect(
+      (await h.engine.decisions.resolve(consent.id, { optionId: 'approve' }, priya)).status,
+    ).toBe('resolved');
+    expect(
+      (await h.engine.decisions.resolve(publish.id, { optionId: 'reject' }, priya)).resolution
+        ?.optionId,
+    ).toBe('reject');
+    expect(
+      (await h.p.events.read({ topics: ['inbox'] })).filter((e) => e.type === 'decision.resolved'),
+    ).toHaveLength(2);
+  });
+
+  it('rejecting a memory proposal marks the record rejected', async () => {
+    const { h } = await started();
+    const rec = {
+      id: 'mem_9',
+      scope: { type: 'project', id: 'p' },
+      type: 'semantic',
+      content: 'c',
+      tags: [],
+      status: 'proposed',
+      trust: 'trusted',
+      confidence: { initial: 1, current: 1 },
+      provenance: { method: 'human' },
+      contentHash: 'h',
+      version: 1,
+      access: { read: [], write: [] },
+      createdAt: 't',
+      updatedAt: 't',
+      links: {},
+    } as MemoryRecord;
+    await h.p.memory.put(rec);
+    const d = await req(h, {
+      kind: 'memory',
+      subject: { type: 'memory', id: 'mem_9' },
+      options: [
+        { id: 'accept', label: 'Accept', style: 'primary' },
+        { id: 'reject', label: 'Reject', style: 'neutral' },
+      ],
+    });
+    await h.engine.decisions.resolve(d.id, { optionId: 'reject' }, priya);
+    expect((await h.p.memory.get('mem_9'))!.value.status).toBe('rejected');
+    expect((await h.p.events.read({ topics: ['memory'] })).map((e) => e.type)).toEqual([
+      'memory.rejected',
+    ]);
+  });
+
   it('unknown decision and option ids are reported, not swallowed', async () => {
     const { h, run } = await started();
     await expect(

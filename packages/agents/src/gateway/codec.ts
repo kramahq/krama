@@ -215,6 +215,9 @@ export function decodeEvent(event: Json, st: DecodeState): GatewayEvent[] {
     if (status) {
       const state = mapState(status.state);
       const text = partsText(obj(status.message)?.parts);
+      // Provisional wire format for a permission request (wrapper task W3): metadata["x-access-request"] = { path, mode? }.
+      const ar = obj(obj(event.metadata)?.['x-access-request']);
+      const accessPath = str(ar?.path);
       if (st.taskId) {
         // Drain finished artifacts before a terminal state so consumers see them first.
         if (isTerminal(state)) out.unshift(...st.assembler.flush());
@@ -224,6 +227,15 @@ export function decodeEvent(event: Json, st: DecodeState): GatewayEvent[] {
           taskId: st.taskId,
           ...(st.contextId ? { contextId: st.contextId } : {}),
           ...(text ? { text } : {}),
+          ...(state === 'input_required' && accessPath
+            ? {
+                request: {
+                  type: 'access' as const,
+                  path: accessPath,
+                  ...(ar?.mode === 'read' || ar?.mode === 'write' ? { mode: ar.mode } : {}),
+                },
+              }
+            : {}),
         });
         st.lastState = state;
       }

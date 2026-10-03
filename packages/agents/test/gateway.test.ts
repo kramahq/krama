@@ -218,6 +218,31 @@ describe('conversation and task state', () => {
     });
   });
 
+  it('reads a structured permission request off input-required (provisional wire format, wrapper task W3)', async () => {
+    const s = (await fake()).queue({
+      frames: [
+        task('working'),
+        status('input-required', {
+          text: 'May I read the spec?',
+          final: true,
+          metadata: { 'x-access-request': { path: '~/Downloads/spec.pdf', mode: 'read' } },
+        }),
+      ],
+    });
+    const last = (await collect(new A2AGateway().send(ref(s), { text: 'x' }))).at(-1);
+    expect(last).toMatchObject({
+      state: 'input_required',
+      text: 'May I read the spec?',
+      request: { type: 'access', path: '~/Downloads/spec.pdf', mode: 'read' },
+    });
+    const plain = (await fake()).queue({
+      frames: [status('input-required', { text: 'Which flow?', final: true })],
+    });
+    expect(
+      (await collect(new A2AGateway().send(ref(plain), { text: 'x' }))).at(-1),
+    ).not.toHaveProperty('request');
+  });
+
   it('maps failed, rejected, canceled and auth-required states', async () => {
     for (const [wire, want] of [
       ['failed', 'failed'],

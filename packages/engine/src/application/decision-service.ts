@@ -365,6 +365,7 @@ export class DecisionService {
           {
             ...(d.access ? { path: d.access.path, agent: d.access.agent } : {}),
             scope: effect === 'grant_project' ? 'project' : 'once',
+            ...(run.projectId ? { projectId: run.projectId } : {}),
           },
         );
         await resume();
