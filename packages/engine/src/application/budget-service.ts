@@ -50,6 +50,22 @@ export class BudgetService {
       const phase = r.phaseId ? run.phases?.find((p) => p.id === r.phaseId) : undefined;
       if (phase) phase.cost = addSpend(phase.cost ?? null, r.cost);
       run.budget.spent = addSpend(run.budget.spent, r.cost);
+      // Project scope is the main accumulation point (multi-project): spend rolls up, null stays "not reported".
+      if (run.projectId) {
+        const proj = await tx.projects.get(run.projectId);
+        if (proj?.value.budget) {
+          await tx.projects.put(
+            {
+              ...proj.value,
+              budget: {
+                ...proj.value.budget,
+                spent: addSpend(proj.value.budget.spent ?? null, r.cost),
+              },
+            },
+            proj.version,
+          );
+        }
+      }
       run.updatedAt = at;
 
       const pct =

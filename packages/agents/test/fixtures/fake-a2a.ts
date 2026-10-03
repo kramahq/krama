@@ -55,15 +55,13 @@ export class FakeA2A {
     const body = JSON.parse(raw || '{}') as { id: number; method: string; params: Json };
     this.calls.push({ method: body.method, params: body.params, headers: req.headers });
     if (body.method === 'tasks/cancel') {
-      res
-        .writeHead(200, { 'content-type': 'application/json' })
-        .end(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            id: body.id,
-            result: { id: (body.params as { id: string }).id, status: { state: 'canceled' } },
-          }),
-        );
+      res.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: { id: (body.params as { id: string }).id, status: { state: 'canceled' } },
+        }),
+      );
       return;
     }
     const s = this.scripts.shift() ?? { frames: [] };
