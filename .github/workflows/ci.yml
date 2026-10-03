@@ -1,0 +1,19 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: kramahq/.github/.github/workflows/ci.yml@main
+  dco:
+    if: github.event_name == 'pull_request'
+    uses: kramahq/.github/.github/workflows/dco.yml@main
