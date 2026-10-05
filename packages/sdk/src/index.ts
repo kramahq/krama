@@ -1,1 +1,3 @@
-export const PACKAGE_NAME = '@kramahq/sdk';
+export * from './client.js';
+export * from './errors.js';
+export * from './events.js';

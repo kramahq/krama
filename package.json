@@ -16,7 +16,8 @@
     "format:check": "prettier --check .",
     "changeset": "changeset",
     "prepare": "husky",
-    "demo": "turbo run build --filter=@kramahq/server && node apps/server/dist/demo/run.js"
+    "demo": "turbo run build --filter=@kramahq/server && node apps/server/dist/demo/run.js",
+    "dev:ui": "node scripts/dev-ui.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
@@ -26,6 +27,7 @@
     "@types/node": "^24.0.0",
     "dependency-cruiser": "^18.5.0",
     "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "husky": "^9.1.7",
     "prettier": "^3.9.9",
     "turbo": "^2.11.7",
