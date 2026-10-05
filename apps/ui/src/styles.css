@@ -1,0 +1,120 @@
+@import 'tailwindcss';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/newsreader/400.css';
+@import '@fontsource/newsreader/400-italic.css';
+
+/* Dark is chosen by the data-theme attribute (set before first paint), never by the media query alone. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* Design tokens, taken from the prototype. Warm neutrals; colour only means state. */
+:root {
+  --bg: #f5f3ee;
+  --panel: #faf9f6;
+  --raised: #ffffff;
+  --hover: #eeebe4;
+  --ink: #1f1d1a;
+  --ink2: #57534c;
+  --ink3: #7d786f;
+  --line: #e5e1d8;
+  --line2: #d3cdc1;
+  --ok: oklch(0.55 0.12 150);
+  --warn: oklch(0.66 0.14 70);
+  --bad: oklch(0.55 0.17 28);
+  --info: oklch(0.55 0.11 245);
+  color-scheme: light;
+}
+[data-theme='dark'] {
+  --bg: #171614;
+  --panel: #1d1c19;
+  --raised: #24231f;
+  --hover: #2a2925;
+  --ink: #ece8df;
+  --ink2: #b5afa4;
+  --ink3: #8f897e;
+  --line: #2f2d29;
+  --line2: #403d37;
+  --ok: oklch(0.74 0.13 150);
+  --warn: oklch(0.8 0.13 75);
+  --bad: oklch(0.72 0.15 28);
+  --info: oklch(0.74 0.1 245);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-hover: var(--hover);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-ink3: var(--ink3);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-info: var(--info);
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-serif: 'Newsreader', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --radius-card: 10px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  * {
+    border-color: var(--line);
+  }
+  :focus-visible {
+    outline: 2px solid var(--info);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  button {
+    font: inherit;
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--info) 30%, transparent);
+  }
+}
+
+@layer utilities {
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line2) transparent;
+  }
+}
+
+/* Text that comes from an agent or a person: keeps its line breaks, wraps long words. */
+.prose-lite {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
