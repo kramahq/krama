@@ -6,3 +6,6 @@ export * from './prompt.js';
 export * from './runner.js';
 export * from './subagents.js';
 export * from './workers.js';
+export * from './hints.js';
+export * from './graph.js';
+export * from './collector.js';

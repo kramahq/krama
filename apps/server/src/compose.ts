@@ -19,6 +19,7 @@ import {
   type Ports,
 } from '@kramahq/engine';
 import {
+  AgentEventCollector,
   OrchestratorMcp,
   OrchestratorRunner,
   type AgentDirectory,
@@ -52,6 +53,8 @@ export interface Krama {
   engine: Engine;
   ports: Ports;
   mcp: OrchestratorMcp;
+  /** Where agents Krama does not call itself report their activity and usage (`POST /agent-events`). */
+  collector: AgentEventCollector;
   runner: OrchestratorRunner;
   runtime: ProcessAgentRuntime;
   backends: BackendRegistry;
@@ -122,12 +125,19 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     ...(o.onError ? { onError: (e, tool) => o.onError!(e, `mcp:${tool}`) } : {}),
   });
   const mcpBaseUrl = await mcp.listen();
+  const collector = new AgentEventCollector({
+    engine,
+    ports,
+    ...(o.onError ? { onError: (e) => o.onError!(e, 'collector') } : {}),
+  });
+  await collector.listen();
   const runner = new OrchestratorRunner({
     engine,
     ports,
     mcp,
     mcpBaseUrl,
     directory,
+    collector,
     ...(o.subAgents ? { subAgents: o.subAgents } : {}),
     ...(o.onError ? { onError: o.onError } : {}),
   });
@@ -139,6 +149,7 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     engine,
     ports,
     mcp,
+    collector,
     runner,
     runtime,
     backends,
@@ -147,6 +158,7 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
       closed = true;
       await runner.shutdown();
       await mcp.close();
+      await collector.close();
       await runtime.shutdown();
       await db.close();
     },

@@ -1,5 +1,4 @@
-import type { Usage } from '@kramahq/contract';
-import type { GatewayEvent, TaskState } from '@kramahq/engine';
+import { mapUsageSummary, type GatewayEvent, type TaskState } from '@kramahq/engine';
 
 type Json = Record<string, unknown>;
 const obj = (v: unknown): Json | undefined =>
@@ -39,22 +38,8 @@ const partsText = (parts: unknown): string =>
     .map((p) => str(p!.text) ?? '')
     .join('');
 
-/** Wrapper token and billing summary (`metadata["x-usage"]`) → contract units. `cost` is a provider billing weight, never USD. */
-export function mapUsageSummary(x: unknown): { usage: Usage[] } | undefined {
-  const u = obj(x);
-  if (!u) return undefined;
-  const usage: Usage[] = [];
-  const add = (unit: Usage['unit'], v: unknown) => {
-    if (typeof v === 'number' && Number.isFinite(v) && v > 0) usage.push({ unit, quantity: v });
-  };
-  add(
-    'tokens',
-    (Number(u.inputTokens) || 0) + (Number(u.outputTokens) || 0) + (Number(u.reasoningTokens) || 0),
-  );
-  add('calls', u.llmCalls);
-  add('credits', u.cost);
-  return { usage };
-}
+// The mapping is shared with the HTTP event sink so both channels count usage the same way.
+export { mapUsageSummary };
 
 /** Accumulates streamed artifact chunks so each artifact is emitted once, complete. */
 export class ArtifactAssembler {

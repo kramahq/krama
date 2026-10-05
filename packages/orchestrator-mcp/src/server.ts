@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { Run } from '@kramahq/contract';
-import type { AgentRef, Engine, Ports, ResolvedRole } from '@kramahq/engine';
+import type { AgentRef, Engine, Ports, ResolvedRole, SpawnSpec } from '@kramahq/engine';
 import { toToolError } from './errors.js';
 import {
   KRAMA_MODE_ONLY_TOOLS,
@@ -11,7 +11,7 @@ import {
   type SharedState,
   type ToolCtx,
 } from './tools.js';
-import { ensureWorker } from './workers.js';
+import { ensureInstance, ensureWorker, stopInstance, type Instance } from './workers.js';
 import { TokenRegistry, type Scope } from './tokens.js';
 
 export interface OrchestratorMcpOptions {
@@ -36,6 +36,7 @@ export class OrchestratorMcp {
     inflight: new Map(),
     agents: new Map(),
     contexts: new Map(),
+    urls: new Map(),
   };
   private http: Server | undefined;
 
@@ -95,6 +96,25 @@ export class OrchestratorMcp {
     );
   }
 
+  /** Starts (or finds) one agent of the run's graph, shared by every parent that references it. */
+  ensureInstance(run: Run, key: string, spec: () => Promise<SpawnSpec>): Promise<Instance> {
+    return ensureInstance(
+      { ports: this.o.ports, directory: this.o.directory, state: this.state },
+      run,
+      key,
+      spec,
+    );
+  }
+
+  /** Stops one agent of the run's graph and forgets it, so the next `ensureInstance` starts it afresh (on its old port when free). */
+  stopInstance(run: Run, key: string): Promise<void> {
+    return stopInstance(
+      { ports: this.o.ports, directory: this.o.directory, state: this.state },
+      run,
+      key,
+    );
+  }
+
   /** Ends a run's session state: returns the worker agent ids spawned for it and forgets conversations and in-flight calls. */
   releaseRun(runId: string): string[] {
     const ids: string[] = [];
@@ -106,6 +126,8 @@ export class OrchestratorMcp {
     }
     for (const slot of [...this.state.contexts.keys()])
       if (slot.startsWith(`${runId}:`)) this.state.contexts.delete(slot);
+    for (const slot of [...this.state.urls.keys()])
+      if (slot.startsWith(`${runId}:`)) this.state.urls.delete(slot);
     this.tokens.revokeRun(runId);
     return ids;
   }

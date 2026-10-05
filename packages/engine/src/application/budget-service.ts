@@ -13,6 +13,8 @@ export interface UsageReport {
   /** Provider-reported cost; `null` when the backend does not report it. */
   cost: Spend;
   usage?: Usage[];
+  /** Who reported it, carried on the `cost.updated` event so cost can be shown per agent. */
+  agent?: { id: string; role: string; backend: string };
 }
 
 /** Accumulates provider-reported spend and enforces the budget cap in the engine, not in prompts. */
@@ -77,7 +79,12 @@ export class BudgetService {
           type: 'cost.updated',
           subject: { type: 'run', id: run.id },
           runId: run.id,
-          data: { spent: run.budget.spent, percentUsed: pct, usage: r.usage ?? [] },
+          data: {
+            spent: run.budget.spent,
+            percentUsed: pct,
+            usage: r.usage ?? [],
+            ...(r.agent ? { agent: r.agent } : {}),
+          },
         },
       ];
 

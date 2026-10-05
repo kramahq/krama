@@ -324,6 +324,44 @@ describe('supervision', () => {
     expect((await fetch(`${now.url}/.well-known/agent-card.json`)).status).toBe(200);
   });
 
+  it('brings a crashed agent back on the same port, so agents given its address keep working', async () => {
+    const { rt, events } = rig({ restart: { max: 1, backoffMs: 10 } });
+    const a = await rt.spawn({
+      definition: definition({ crashAfterMs: 400 }),
+      workspace: { mode: 'isolated', key: 'r' },
+    });
+    await until(async () => (await eventTypes(events)).includes('agent.restarted'));
+    const now = rt.get(a.id)!;
+    expect(now.port).toBe(a.port);
+    expect(now.url).toBe(a.url);
+    expect((await fetch(`${a.url}/.well-known/agent-card.json`)).status).toBe(200);
+  });
+
+  it('keeps the port on an explicit restart too', async () => {
+    const { rt } = rig();
+    const a = await rt.spawn({
+      definition: definition(),
+      workspace: { mode: 'isolated', key: 'r' },
+    });
+    const again = await rt.restart(a.id);
+    expect(again.pid).not.toBe(a.pid);
+    expect(again.url).toBe(a.url);
+  });
+
+  it('asks for a given port when starting afresh, and takes another when it is gone', async () => {
+    const taken = new PortAllocator();
+    const first = await taken.allocate();
+    taken.release(first);
+    // Free again: the same port comes back.
+    expect(await taken.allocate(first)).toBe(first);
+    // Held by someone: a different one is picked rather than failing.
+    const other = await taken.allocate(first);
+    expect(other).not.toBe(first);
+    // Not bindable (another process has it): likewise.
+    const busy = new PortAllocator({ probe: async (p) => p !== 4242 });
+    expect(await busy.allocate(4242)).not.toBe(4242);
+  });
+
   it('marks the agent stopped with its last output when restarts are exhausted', async () => {
     const { rt, events } = rig({ restart: { max: 0, backoffMs: 5 } });
     const a = await rt.spawn({

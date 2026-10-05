@@ -27,7 +27,7 @@ export interface DemoResult {
   timeline: string[];
   /** Usage reported by the orchestrator itself (no step). */
   orchestratorUsage: Usage[];
-  /** Usage Krama could attribute to worker steps. Empty in native mode, where workers are called directly. */
+  /** Usage workers reported: through relayed steps (`krama`) or to the event sink (`native`). */
   workerUsage: Usage[];
   phases: { id: string; status: string; iteration: number }[];
 }
@@ -156,9 +156,21 @@ export async function runDemo(o: DemoOptions): Promise<DemoResult> {
     unsubscribe();
 
     const final = (await k.ports.store.runs.get(run.id))!.value.run;
-    const entries = await k.ports.store.usage.forRun(run.id);
-    const orchestratorUsage = aggregateUsage(entries.filter((x) => !x.stepId).map((x) => x.usage));
-    const workerUsage = aggregateUsage(entries.filter((x) => x.stepId).map((x) => x.usage));
+    // Usage by who reported it: the orchestrator, or a worker (a relayed step, or a worker reporting to the event sink).
+    const spent = (await k.ports.events.read({ topics: [`run:${run.id}`] })).filter(
+      (e) => e.type === 'cost.updated',
+    );
+    const byAgent = (isOrchestrator: boolean) =>
+      aggregateUsage(
+        spent
+          .filter((e) => {
+            const role = (e.data as { agent?: { role?: string } }).agent?.role;
+            return role !== undefined && (role === 'orchestrator') === isOrchestrator;
+          })
+          .map((e) => ((e.data as { usage?: Usage[] }).usage ?? []) as Usage[]),
+      );
+    const orchestratorUsage = byAgent(true);
+    const workerUsage = byAgent(false);
 
     out('\nSummary');
     out(`  status:        ${final.status}`);
@@ -171,7 +183,7 @@ export async function runDemo(o: DemoOptions): Promise<DemoResult> {
         workerUsage.length
           ? fmtUsage(workerUsage)
           : o.mode === 'native'
-            ? 'not visible to Krama in native mode (they are called directly)'
+            ? 'not reported (they are called directly and did not report to the event sink)'
             : 'not reported'
       }`,
     );

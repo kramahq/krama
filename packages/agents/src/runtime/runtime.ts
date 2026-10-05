@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Agent, BackendDescriptor } from '@kramahq/contract';
 import type {
@@ -14,7 +14,7 @@ import type {
 } from '@kramahq/engine';
 import spawn from 'cross-spawn';
 import type { ChildProcess } from 'node:child_process';
-import { buildLaunch, type BuildProblem } from '../config-builder.js';
+import { buildLaunch, deriveLaunch, type BuildProblem } from '../config-builder.js';
 import { Ledger, writeFileAtomic } from './ledger.js';
 import { LogTail } from './log-tail.js';
 import { PortAllocator } from './port-allocator.js';
@@ -73,6 +73,8 @@ interface Entry {
   lastActive: number;
   stoppedAt?: number;
   configPath: string;
+  /** A derived config written next to an agent's own directory; removed when the agent stops. */
+  derivedInPlace?: boolean;
 }
 
 /** Variables a child may inherit: enough to find programs and a home directory, nothing else. */
@@ -214,6 +216,7 @@ export class ProcessAgentRuntime implements AgentRuntime {
     const pid = e.child?.pid;
     if (pid) await killTree(pid, { ops: this.ops, graceMs: this.o.stopGraceMs ?? 3000 });
     this.markStopped(e);
+    if (e.derivedInPlace) rmSync(e.configPath, { force: true });
     await this.ledger.remove(id).catch(() => undefined);
     await this.emit('agent.stopped', e.agent);
   }
@@ -227,14 +230,35 @@ export class ProcessAgentRuntime implements AgentRuntime {
     prior?: Entry,
   ): Promise<Entry> {
     const def = spec.definition;
-    const port = await this.ports.allocate();
+    // A restarted agent comes back where it was, so the agents that were given its address keep working.
+    const port = await this.ports.allocate(spec.preferredPort ?? prior?.agent.port);
     const workDir =
       spec.workspace.mode === 'shared'
         ? this.workspaces.shared(spec.workspace.key)
         : this.workspaces.isolated(spec.workspace.key, id);
     const agentDir = join(this.o.dataDir, 'agents', id);
     mkdirSync(agentDir, { recursive: true });
-    const configPath = join(agentDir, 'config.json');
+    let configPath = join(agentDir, 'config.json');
+    let ownConfig: Record<string, unknown> | undefined;
+    let derivedInPlace = false;
+    if (spec.baseConfig) {
+      try {
+        if ('json' in spec.baseConfig) ownConfig = spec.baseConfig.json;
+        else {
+          const original = join(spec.baseConfig.dir, 'config.json');
+          ownConfig = JSON.parse(readFileSync(original, 'utf8')) as Record<string, unknown>;
+          // Next to the original, so the config's relative paths keep resolving against the same directory.
+          configPath = join(spec.baseConfig.dir, `config.krama.${id}.json`);
+          derivedInPlace = true;
+        }
+      } catch (e) {
+        this.ports.release(port);
+        throw new AgentStartError(
+          'config_invalid',
+          `Cannot read the config of ${def.id}: ${(e as Error).message}`,
+        );
+      }
+    }
 
     // Resolve only the secrets this definition binds.
     const secretValues: Record<string, string> = {};
@@ -242,27 +266,31 @@ export class ProcessAgentRuntime implements AgentRuntime {
       const v = await this.o.secrets.resolve(ref);
       if (v !== undefined) secretValues[ref] = v;
     }
-    const plan = buildLaunch(
-      descriptor,
-      {
-        model: def.backend.model,
-        options: def.backend.options,
-        common: def.backend.common,
-        secrets: def.backend.secrets,
-      },
-      {
-        port,
-        workspace: workDir,
-        configPath,
-        agentName: def.name,
-        agentDescription: def.description,
-        ...(spec.systemPrompt ? { systemPrompt: spec.systemPrompt } : {}),
-        ...(spec.allowedTools ? { allowedTools: spec.allowedTools } : {}),
-        ...(spec.mcp ? { mcp: spec.mcp } : {}),
-        secretValues,
-        ambientEnv: this.o.ambientEnv ?? process.env,
-      },
-    );
+    const rt = {
+      port,
+      workspace: workDir,
+      configPath,
+      agentName: def.name,
+      agentDescription: def.description,
+      ...(spec.systemPrompt ? { systemPrompt: spec.systemPrompt } : {}),
+      ...(spec.allowedTools ? { allowedTools: spec.allowedTools } : {}),
+      ...(spec.mcp ? { mcp: spec.mcp } : {}),
+      secretValues,
+      ambientEnv: this.o.ambientEnv ?? process.env,
+    };
+    const plan = ownConfig
+      ? deriveLaunch(descriptor, ownConfig, { secrets: def.backend.secrets }, rt, spec.overrides)
+      : buildLaunch(
+          descriptor,
+          {
+            model: def.backend.model,
+            options: def.backend.options,
+            common: def.backend.common,
+            secrets: def.backend.secrets,
+          },
+          rt,
+          spec.overrides,
+        );
     if (!plan.ok) {
       this.ports.release(port);
       throw new AgentStartError(
@@ -271,7 +299,8 @@ export class ProcessAgentRuntime implements AgentRuntime {
         { problems: plan.problems },
       );
     }
-    await writeFileAtomic(configPath, JSON.stringify(plan.config, null, 2));
+    // Owner-only: the file can hold an event-sink token.
+    await writeFileAtomic(configPath, JSON.stringify(plan.config, null, 2), 0o600);
 
     const base: Record<string, string> = { NO_COLOR: '1' };
     const ambient = this.o.ambientEnv ?? process.env;
@@ -313,6 +342,7 @@ export class ProcessAgentRuntime implements AgentRuntime {
     entry.failures = 0;
     entry.lastActive = Date.now();
     entry.configPath = configPath;
+    entry.derivedInPlace = derivedInPlace;
     delete entry.stoppedAt;
     this.entries.set(id, entry);
 

@@ -399,3 +399,38 @@ describe('timeouts and cancellation', () => {
     expect(s.calls[0]).toMatchObject({ method: 'tasks/cancel', params: { id: 'task_77' } });
   });
 });
+
+describe('the correlation context', () => {
+  const done = { frames: [task('submitted'), status('completed', { final: true })] };
+
+  it('is sent with the request in the wrapper’s own names', async () => {
+    const s = (await fake()).queue(done);
+    const gw = new A2AGateway();
+    await collect(
+      gw.send(ref(s), {
+        text: 'hi',
+        correlation: {
+          runId: 'run_1',
+          phaseId: 'draft',
+          stepId: 'stp_1',
+          traceId: 'ctx_1',
+          parentAgentId: 'agt_orch',
+        },
+      }),
+    );
+    const message = (s.calls[0]!.params as { message: { metadata: unknown } }).message;
+    expect(message.metadata).toEqual({
+      trace_id: 'ctx_1',
+      parent_agent_id: 'agt_orch',
+      propagated_metadata: { run_id: 'run_1', phase_id: 'draft', step_id: 'stp_1' },
+    });
+  });
+
+  it('is left out when the caller has none, so an older wrapper sees the request it always did', async () => {
+    const s = (await fake()).queue(done);
+    await collect(new A2AGateway().send(ref(s), { text: 'hi' }));
+    expect((s.calls[0]!.params as { message: Record<string, unknown> }).message).not.toHaveProperty(
+      'metadata',
+    );
+  });
+});

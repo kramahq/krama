@@ -156,9 +156,7 @@ describe('a run in native delegation mode', () => {
     expect(roles[2]).toBe('orchestrator'); // workers first: the orchestrator probes them at startup
 
     const orch = spawned.find((x) => x.definition.role === 'orchestrator')!;
-    const subAgents = orch.definition.backend.common?.subAgents as ReturnType<
-      typeof buildSubAgents
-    >;
+    const subAgents = orch.overrides?.subAgents as ReturnType<typeof buildSubAgents>;
     const workers = s.p.agents.list().filter((a) => a.role !== 'orchestrator');
     expect(subAgents.agents.map((a) => a.name).sort()).toEqual(['author', 'reviewer']);
     for (const w of workers)
@@ -200,7 +198,7 @@ describe('a run in native delegation mode', () => {
     // No worker starts until something is delegated.
     expect(s.p.agents.spawned.map((x) => x.definition.role)).toEqual(['orchestrator']);
     const orch = s.p.agents.spawned[0]!;
-    expect(orch.definition.backend.common?.subAgents).toBeUndefined();
+    expect(orch.overrides?.subAgents).toBeUndefined();
     expect(orch.systemPrompt).toContain('delegate_to_agent');
   });
 });

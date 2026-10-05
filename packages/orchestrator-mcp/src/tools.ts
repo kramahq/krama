@@ -36,6 +36,8 @@ export interface SharedState {
   agents: Map<string, string>;
   /** Last conversation per run and role, for resuming. */
   contexts: Map<string, string>;
+  /** Address each graph instance last had, so a restart that moves it is noticed and its callers are reconfigured. */
+  urls: Map<string, string>;
 }
 
 export interface ToolCtx {

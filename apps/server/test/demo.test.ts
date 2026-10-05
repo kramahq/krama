@@ -24,9 +24,13 @@ describe('the walking skeleton', () => {
       expect(text).not.toContain('delegate_to_agent');
       expect(text).toContain('decision requested: Publish approval');
       expect(text).toContain('run completed');
-      // Workers are called directly, so only the orchestrator's own usage reaches Krama.
+      // The orchestrator reports on the A2A stream. The workers, which it calls directly, report to the event sink: Krama
+      // sees their tool calls and their usage even though it never relayed a call.
       expect(tokens(r.orchestratorUsage)).toBe(560);
-      expect(r.workerUsage).toEqual([]);
+      expect(text).toContain('author called compose');
+      expect(text).toContain('reviewer called compose');
+      // 2 drafts (200 each) + 2 reviews (190 each), counted once.
+      expect(tokens(r.workerUsage)).toBe(780);
     },
     SLOW,
   );

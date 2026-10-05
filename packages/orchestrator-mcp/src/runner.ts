@@ -8,10 +8,21 @@ import {
   type GatewayEvent,
   type Ports,
   type RunExecutor,
+  type SpawnSpec,
 } from '@kramahq/engine';
+import {
+  childrenOf,
+  graphOf,
+  planFromPack,
+  planFromRoster,
+  specFor,
+  startWorkers,
+  type GraphEnv,
+} from './graph.js';
+import type { AgentEventCollector } from './collector.js';
 import { firstMessage, renderOrchestratorPrompt } from './prompt.js';
 import type { OrchestratorMcp } from './server.js';
-import { buildSubAgents, type SubAgentsOptions } from './subagents.js';
+import type { SubAgentsOptions } from './subagents.js';
 import { mcpEntryFor } from './tokens.js';
 import type { AgentDirectory } from './tools.js';
 
@@ -28,6 +39,8 @@ export interface RunnerOptions {
   turnTimeoutMs?: number;
   /** Sub-agent tool timings for `native` delegation (skillmap probe and sync budget). */
   subAgents?: SubAgentsOptions;
+  /** The event sink for agents Krama does not call itself. Without one, only what reaches the A2A stream is seen. */
+  collector?: AgentEventCollector;
   onError?: (e: unknown, where: string) => void;
 }
 
@@ -49,6 +62,8 @@ interface Drive {
   ended: boolean;
   nudges: number;
   needsResume: boolean;
+  /** The orchestrator process was replaced mid-run; its next message must say so, since it remembers nothing. */
+  restarted?: boolean;
 }
 
 type TurnState = 'completed' | 'input_required' | 'failed' | 'timed_out' | 'canceled';
@@ -303,6 +318,10 @@ export class OrchestratorRunner implements RunExecutor {
     } catch (e) {
       return { state: 'failed', text: (e as Error).message };
     }
+    if (d.restarted) {
+      d.restarted = false;
+      text = `${firstMessage('resume')}\n\n${text}`;
+    }
     d.turn = new AbortController();
     const onStop = () => d.turn?.abort();
     d.abort.signal.addEventListener('abort', onStop, { once: true });
@@ -316,6 +335,7 @@ export class OrchestratorRunner implements RunExecutor {
         ...(d.contextId ? { contextId: d.contextId } : {}),
         timeoutMs: this.o.turnTimeoutMs ?? 6 * 60 * 60_000,
         signal: d.turn.signal,
+        correlation: { runId: run.id, ...(d.contextId ? { traceId: d.contextId } : {}) },
       })) {
         await this.onEvent(d, run, agent, e, (s, t) => {
           state = s;
@@ -345,43 +365,28 @@ export class OrchestratorRunner implements RunExecutor {
       text?: string,
     ) => void,
   ): Promise<void> {
-    const { ports, engine } = this.o;
+    const { engine } = this.o;
     switch (e.kind) {
       case 'state':
         if (e.contextId) d.contextId = e.contextId;
         if (e.state === 'working') break;
         set(e.state === 'input_required' ? 'input_required' : e.state, e.text);
         break;
-      case 'sideband': {
-        // The orchestrator is a participant: its tool calls and reasoning show up in the activity feed too.
-        const type =
-          e.type === 'tool_call'
-            ? 'activity.tool_call'
-            : e.type === 'tool_result'
-              ? 'activity.tool_result'
-              : e.type === 'message'
-                ? 'activity.message'
-                : 'activity.status';
-        await ports.events.append({
-          type,
-          subject: { type: 'agent', id: agent.id },
-          runId: run.id,
-          data: {
-            kind: e.type,
-            agent: { id: agent.id, role: 'orchestrator', backend: agent.backend },
-            ...(e.toolName ? { toolName: e.toolName } : {}),
-            ...(e.isError !== undefined ? { isError: e.isError } : {}),
-            ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
-            ...(e.text ? { text: e.text.slice(0, 4000) } : {}),
-          },
-        });
+      case 'sideband':
+      case 'usage': {
+        // The orchestrator is a participant: its tool calls, reasoning and usage go through the same ingest as every agent's.
+        await engine.ingest
+          .ingest(
+            {
+              runId: run.id,
+              agent: { id: agent.id, role: 'orchestrator', backend: agent.backend },
+              channel: 'a2a',
+            },
+            [e],
+          )
+          .catch((err) => this.o.onError?.(err, e.kind));
         break;
       }
-      case 'usage':
-        await engine.budget
-          .record({ runId: run.id, cost: e.cost, usage: e.usage })
-          .catch((err) => this.o.onError?.(err, 'usage'));
-        break;
       default:
         break; // the orchestrator's own text is not a deliverable; it records outcomes through tools
     }
@@ -392,60 +397,104 @@ export class OrchestratorRunner implements RunExecutor {
     const runtime = ports.agents;
     if (!runtime) throw new DomainError('not_found', 'No agent runtime is configured');
     const existing = d.agentId ? runtime.ref(d.agentId) : undefined;
-    if (existing) return existing;
 
     const pack = await ports.packs.get(run.pack.id);
     if (!pack) throw new DomainError('not_found', `Pack ${run.pack.id} not found`);
-    const base = directory.definitions().find((x) => x.id === run.orchestrator.definitionId);
-    if (!base)
+
+    // Runs created before delegation modes existed relayed through Krama.
+    const mode = run.orchestrator.delegation ?? 'krama';
+    const declared = planFromPack(pack);
+    if (declared && mode !== 'native')
+      throw new DomainError(
+        'invalid_graph',
+        'This pack declares an agent graph, which needs native delegation: the relay still works from a roster only',
+      );
+    // In the relay the workers start on first delegation, so a running orchestrator needs nothing more.
+    if (existing && mode !== 'native') return existing;
+
+    const roster = declared
+      ? []
+      : resolveRoster(pack.roster, directory.definitions(), {
+          backendUsable: (b) => directory.backendUsable(b),
+        }).resolved;
+    const orchestrator = declared
+      ? undefined
+      : directory.definitions().find((x) => x.id === run.orchestrator.definitionId);
+    if (!declared && !orchestrator)
       throw new DomainError(
         'not_found',
         `Orchestrator definition "${run.orchestrator.definitionId}" not found`,
       );
-    let definition = {
-      ...base,
-      backend: {
-        ...base.backend,
-        wrapper: run.orchestrator.backend,
-        ...(run.orchestrator.model ? { model: run.orchestrator.model } : {}),
-      },
-    };
-    const roster = resolveRoster(pack.roster, directory.definitions(), {
-      backendUsable: (b) => directory.backendUsable(b),
-    }).resolved;
 
-    // Runs created before delegation modes existed relayed through Krama.
-    const mode = run.orchestrator.delegation ?? 'krama';
+    let spec: SpawnSpec;
     if (mode === 'native') {
-      // The orchestrator calls workers itself, so every rostered worker must be up and addressable first, and its
-      // sub-agent config is generated from exactly that roster (an unlisted agent cannot be reached).
-      const workers = [];
-      for (const r of roster) workers.push(await mcp.ensureWorker(run, r));
-      definition = {
-        ...definition,
+      // The orchestrator calls its agents itself, so every agent it can reach must be up and addressable first, leaves
+      // first, and each parent's sub-agent config is generated from exactly what the graph lets it call. Doing this at
+      // every turn is the health check: a dead agent is brought back where it was.
+      const plan =
+        declared ??
+        planFromRoster(roster, {
+          definitionId: orchestrator!.id,
+          backend: run.orchestrator.backend,
+          model: run.orchestrator.model,
+        });
+      const graph = graphOf(plan);
+      const collector = this.o.collector;
+      const env: GraphEnv = {
+        ports,
+        directory,
+        mcp,
+        subAgents: this.o.subAgents,
+        events: collector
+          ? { url: collector.url, issue: (claims) => collector.tokens.issue(claims) }
+          : undefined,
+      };
+      const { agents, stale } = await startWorkers(env, run, pack, plan, graph);
+      if (existing) {
+        if (!stale.has(graph.orchestrator)) return existing;
+        // An agent it calls came back at another address, so it must be started again to be given the new one. Its
+        // conversation goes with it; the run's state is in Krama, which the new one reads with get_run.
+        await runtime.stop(existing.id).catch(() => undefined);
+      }
+      const children = childrenOf(env, plan, graph, graph.orchestrator, agents);
+      mcp.tokens.revokeRun(run.id);
+      const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
+      spec = await specFor(env, run, pack, plan, graph.orchestrator, children, {
+        prompt: renderOrchestratorPrompt({ run, pack, roster, agents: children.lines }),
+        hints: false, // the orchestrator's prompt already lists the agents it can call
+        mcp: entry.mcp,
+        env: entry.env,
+      });
+    } else {
+      const base = orchestrator!;
+      const definition = {
+        ...base,
         backend: {
-          ...definition.backend,
-          common: {
-            ...definition.backend.common,
-            subAgents: buildSubAgents(workers, this.o.subAgents),
-          },
+          ...base.backend,
+          wrapper: run.orchestrator.backend,
+          ...(run.orchestrator.model ? { model: run.orchestrator.model } : {}),
         },
       };
+      mcp.tokens.revokeRun(run.id);
+      const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
+      const persona = directory.systemPrompt(definition.id);
+      spec = {
+        definition,
+        workspace: { mode: 'shared', key: run.id },
+        assignment: { runId: run.id },
+        systemPrompt: [persona, renderOrchestratorPrompt({ run, pack, roster })]
+          .filter(Boolean)
+          .join('\n\n'),
+        mcp: entry.mcp,
+        env: entry.env,
+      };
     }
-
-    mcp.tokens.revokeRun(run.id);
-    const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
-    const persona = directory.systemPrompt(definition.id);
-    const spawned = await runtime.spawn({
-      definition,
-      workspace: { mode: 'shared', key: run.id },
-      assignment: { runId: run.id },
-      systemPrompt: [persona, renderOrchestratorPrompt({ run, pack, roster })]
-        .filter(Boolean)
-        .join('\n\n'),
-      mcp: entry.mcp,
-      env: entry.env,
-    });
+    // A replacement process remembers nothing of the conversation, whatever the reason it is a replacement.
+    if (d.agentId) {
+      d.contextId = undefined;
+      d.restarted = true;
+    }
+    const spawned = await runtime.spawn(spec);
     d.agentId = spawned.id;
     const ref = runtime.ref(spawned.id);
     if (!ref) throw new Error('The orchestrator agent stopped right after starting');
@@ -457,6 +506,7 @@ export class OrchestratorRunner implements RunExecutor {
     const run = await this.run(d.runId).catch(() => undefined);
     // While the run can still continue (waiting, blocked, paused) keep its agents; otherwise release everything.
     if (!run || isTerminalRun(run.status)) {
+      this.o.collector?.tokens.revokeRun(d.runId);
       const workers = this.o.mcp.releaseRun(d.runId);
       for (const id of [...workers, ...(d.agentId ? [d.agentId] : [])])
         await this.o.ports.agents?.stop(id).catch(() => undefined);
