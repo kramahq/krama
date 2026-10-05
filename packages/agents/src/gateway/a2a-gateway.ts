@@ -36,6 +36,24 @@ const newMessageId = () =>
  * `AgentGateway` over A2A JSON-RPC (`message/stream`, falling back to `message/send`). Speaks the 0.3 method
  * names, which every wrapper still serves next to 1.0 (decision D8; the 1.0 binding is W7 behind this class).
  */
+/**
+ * The caller's correlation context in the wrapper's own names (`trace_id`, `parent_agent_id`, `propagated_metadata`), so an
+ * agent can stamp it on its events and pass it on to the agents it calls. An agent that ignores it is unaffected.
+ */
+export function correlationMetadata(
+  c: NonNullable<SendMessage['correlation']>,
+): Record<string, unknown> {
+  return {
+    ...(c.traceId ? { trace_id: c.traceId } : {}),
+    ...(c.parentAgentId ? { parent_agent_id: c.parentAgentId } : {}),
+    propagated_metadata: {
+      run_id: c.runId,
+      ...(c.phaseId ? { phase_id: c.phaseId } : {}),
+      ...(c.stepId ? { step_id: c.stepId } : {}),
+    },
+  };
+}
+
 export class A2AGateway implements AgentGateway {
   private readonly doFetch: typeof fetch;
   private readonly path: string;
@@ -70,6 +88,7 @@ export class A2AGateway implements AgentGateway {
         role: 'user',
         parts: [{ kind: 'text', text: message.text }],
         ...(message.contextId ? { contextId: message.contextId } : {}),
+        ...(message.correlation ? { metadata: correlationMetadata(message.correlation) } : {}),
       },
       // Older wrappers read the context from here; harmless for the rest.
       configuration: { ...(message.contextId ? { contextId: message.contextId } : {}) },

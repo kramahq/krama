@@ -9,6 +9,7 @@ export * from './domain/decision.js';
 export * from './domain/matching.js';
 export * from './domain/roster.js';
 export * from './domain/agent-graph.js';
+export * from './domain/signals.js';
 export * from './ports/index.js';
 export * from './application/index.js';
 export * from './system.js';

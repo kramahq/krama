@@ -19,6 +19,7 @@ import {
   startWorkers,
   type GraphEnv,
 } from './graph.js';
+import type { AgentEventCollector } from './collector.js';
 import { firstMessage, renderOrchestratorPrompt } from './prompt.js';
 import type { OrchestratorMcp } from './server.js';
 import type { SubAgentsOptions } from './subagents.js';
@@ -38,6 +39,8 @@ export interface RunnerOptions {
   turnTimeoutMs?: number;
   /** Sub-agent tool timings for `native` delegation (skillmap probe and sync budget). */
   subAgents?: SubAgentsOptions;
+  /** The event sink for agents Krama does not call itself. Without one, only what reaches the A2A stream is seen. */
+  collector?: AgentEventCollector;
   onError?: (e: unknown, where: string) => void;
 }
 
@@ -326,6 +329,7 @@ export class OrchestratorRunner implements RunExecutor {
         ...(d.contextId ? { contextId: d.contextId } : {}),
         timeoutMs: this.o.turnTimeoutMs ?? 6 * 60 * 60_000,
         signal: d.turn.signal,
+        correlation: { runId: run.id, ...(d.contextId ? { traceId: d.contextId } : {}) },
       })) {
         await this.onEvent(d, run, agent, e, (s, t) => {
           state = s;
@@ -355,43 +359,28 @@ export class OrchestratorRunner implements RunExecutor {
       text?: string,
     ) => void,
   ): Promise<void> {
-    const { ports, engine } = this.o;
+    const { engine } = this.o;
     switch (e.kind) {
       case 'state':
         if (e.contextId) d.contextId = e.contextId;
         if (e.state === 'working') break;
         set(e.state === 'input_required' ? 'input_required' : e.state, e.text);
         break;
-      case 'sideband': {
-        // The orchestrator is a participant: its tool calls and reasoning show up in the activity feed too.
-        const type =
-          e.type === 'tool_call'
-            ? 'activity.tool_call'
-            : e.type === 'tool_result'
-              ? 'activity.tool_result'
-              : e.type === 'message'
-                ? 'activity.message'
-                : 'activity.status';
-        await ports.events.append({
-          type,
-          subject: { type: 'agent', id: agent.id },
-          runId: run.id,
-          data: {
-            kind: e.type,
-            agent: { id: agent.id, role: 'orchestrator', backend: agent.backend },
-            ...(e.toolName ? { toolName: e.toolName } : {}),
-            ...(e.isError !== undefined ? { isError: e.isError } : {}),
-            ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
-            ...(e.text ? { text: e.text.slice(0, 4000) } : {}),
-          },
-        });
+      case 'sideband':
+      case 'usage': {
+        // The orchestrator is a participant: its tool calls, reasoning and usage go through the same ingest as every agent's.
+        await engine.ingest
+          .ingest(
+            {
+              runId: run.id,
+              agent: { id: agent.id, role: 'orchestrator', backend: agent.backend },
+              channel: 'a2a',
+            },
+            [e],
+          )
+          .catch((err) => this.o.onError?.(err, e.kind));
         break;
       }
-      case 'usage':
-        await engine.budget
-          .record({ runId: run.id, cost: e.cost, usage: e.usage })
-          .catch((err) => this.o.onError?.(err, 'usage'));
-        break;
       default:
         break; // the orchestrator's own text is not a deliverable; it records outcomes through tools
     }
@@ -441,7 +430,16 @@ export class OrchestratorRunner implements RunExecutor {
           model: run.orchestrator.model,
         });
       const graph = graphOf(plan);
-      const env: GraphEnv = { ports, directory, mcp, subAgents: this.o.subAgents };
+      const collector = this.o.collector;
+      const env: GraphEnv = {
+        ports,
+        directory,
+        mcp,
+        subAgents: this.o.subAgents,
+        events: collector
+          ? { url: collector.url, issue: (claims) => collector.tokens.issue(claims) }
+          : undefined,
+      };
       const started = await startWorkers(env, run, pack, plan, graph);
       const children = childrenOf(env, plan, graph, graph.orchestrator, started);
       mcp.tokens.revokeRun(run.id);
@@ -488,6 +486,7 @@ export class OrchestratorRunner implements RunExecutor {
     const run = await this.run(d.runId).catch(() => undefined);
     // While the run can still continue (waiting, blocked, paused) keep its agents; otherwise release everything.
     if (!run || isTerminalRun(run.status)) {
+      this.o.collector?.tokens.revokeRun(d.runId);
       const workers = this.o.mcp.releaseRun(d.runId);
       for (const id of [...workers, ...(d.agentId ? [d.agentId] : [])])
         await this.o.ports.agents?.stop(id).catch(() => undefined);

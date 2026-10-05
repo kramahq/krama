@@ -283,6 +283,17 @@ export interface SendMessage {
   /** Overrides the default delegation timeout (long media jobs). */
   timeoutMs?: number;
   signal?: AbortSignal;
+  /**
+   * Who this call is for. Sent with the request so an agent can stamp it on its events and pass it on to the agents it
+   * calls; an agent that does not read it is unaffected.
+   */
+  correlation?: {
+    runId: string;
+    phaseId?: string;
+    stepId?: string;
+    traceId?: string;
+    parentAgentId?: string;
+  };
 }
 
 export interface SpawnSpec {

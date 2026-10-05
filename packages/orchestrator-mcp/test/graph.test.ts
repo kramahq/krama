@@ -75,8 +75,12 @@ const graphPack = (agents = catalogue(), orchestrator = 'planner'): Pack => ({
   agents,
 });
 
-const make = async (p: Pack, policy: object = { defaultDelegation: 'native' }) => {
-  const s = await system(undefined, policy, [p]);
+const make = async (
+  p: Pack,
+  policy: object = { defaultDelegation: 'native' },
+  withCollector = false,
+) => {
+  const s = await system(undefined, policy, [p], withCollector);
   s.p.backends = { list: () => BACKENDS, get: (id) => BACKENDS.find((b) => b.id === id) };
   s.p.secrets = new StaticSecretResolver({ 'vendor-token': 'tok-123' });
   live.push(s);
@@ -211,6 +215,95 @@ describe('a run over an agent graph (native delegation)', () => {
     await s.runner.idle(runId);
     expect(s.p.agents.list({ status: ['idle', 'busy', 'starting'] })).toEqual([]);
     expect(s.mcp.tokens.size).toBe(0);
+  });
+});
+
+describe('where agents report their activity', () => {
+  const sink = (spec: { overrides?: Record<string, unknown> }) =>
+    spec.overrides?.events as
+      { transport: string; httpUrl: string; httpHeaders: { Authorization: string } } | undefined;
+
+  it('gives agents Krama does not call a sink with a token that names the run and the instance, and none to the orchestrator', async () => {
+    const s = await make(graphPack(), { defaultDelegation: 'native' }, true);
+    const runId = await newRun(s);
+    s.p.gateway.queue(
+      'orchestrator',
+      playOrchestrator(s, async (c) => {
+        for (const phaseId of ['draft', 'review'])
+          await call(c, 'record_phase_outcome', {
+            phaseId,
+            status: 'success',
+            reason: 'done',
+            gating: 'continue',
+          });
+      }),
+    );
+    await s.runner.start(runId);
+    await until(async () => (await statusOf(s, runId)) === 'awaiting_decision');
+
+    const spawned = s.p.agents.spawned;
+    const researcher = spawned.find((x) => x.definition.id === 'researcher')!;
+    const events = sink(researcher)!;
+    expect(events).toMatchObject({
+      transport: 'http',
+      httpUrl: `${s.collector!.url}/agent-events`,
+    });
+    // The instance id was fixed before the agent started, so the token can name it.
+    expect(researcher.instanceId).toBeTruthy();
+    expect(
+      s.collector!.tokens.verify(events.httpHeaders.Authorization.replace('Bearer ', '')),
+    ).toEqual({
+      runId,
+      instanceId: researcher.instanceId,
+      agent: 'researcher',
+      role: 'researcher',
+      backend: 'a2a-codex',
+    });
+    // Every worker has its own token; the orchestrator, which Krama calls itself, has none.
+    const tokens = spawned
+      .filter((x) => x.definition.id !== 'planner')
+      .map((x) => sink(x)!.httpHeaders.Authorization);
+    expect(new Set(tokens).size).toBe(3);
+    expect(sink(spawned.find((x) => x.definition.id === 'planner')!)).toBeUndefined();
+    // The sink keeps the subAgents the same spec carries.
+    expect(researcher.overrides).not.toHaveProperty('subAgents');
+    expect(spawned.find((x) => x.definition.id === 'reviewer')!.overrides).toHaveProperty(
+      'subAgents',
+    );
+
+    // Done with the run: the tokens stop working.
+    const dec = (await s.p.store.decisions.list({ runId, status: ['pending'] })).items[0]!.value
+      .decision;
+    await s.engine.decisions.resolve(dec.id, { optionId: 'approve' }, user);
+    await until(async () => (await statusOf(s, runId)) === 'completed');
+    await s.runner.idle(runId);
+    expect(s.collector!.tokens.size).toBe(0);
+    expect(s.errors).toEqual([]);
+  });
+
+  it('configures no sink when there is no collector', async () => {
+    const s = await make(graphPack());
+    const runId = await newRun(s);
+    s.p.gateway.queue(
+      'orchestrator',
+      playOrchestrator(s, async () => undefined),
+    );
+    await s.runner.start(runId);
+    await until(() => s.p.agents.spawned.some((x) => x.definition.id === 'planner'));
+    for (const x of s.p.agents.spawned) expect(sink(x)).toBeUndefined();
+  });
+
+  it('sends the run with every orchestrator turn', async () => {
+    const s = await make(graphPack());
+    const runId = await newRun(s);
+    const seen: unknown[] = [];
+    s.p.gateway.queue(
+      'orchestrator',
+      playOrchestrator(s, async (_c, message) => void seen.push(message.correlation)),
+    );
+    await s.runner.start(runId);
+    await until(() => seen.length > 0);
+    expect(seen[0]).toEqual({ runId });
   });
 });
 

@@ -24,6 +24,36 @@ const host = arg('--hostname') ?? '127.0.0.1';
 const section = (config.demo ?? {}) as Json;
 const script = String(section.script ?? 'worker');
 const agentName = String((config.agentCard as Json | undefined)?.name ?? script);
+const events = (config.events ?? {}) as {
+  transport?: string;
+  httpUrl?: string;
+  httpHeaders?: Record<string, string>;
+};
+
+/**
+ * What a real wrapper does when `events.transport` is `http`: POST each event to the sink, best effort. The agent never
+ * fails because the sink is down.
+ */
+async function emit(eventType: string, data: Json): Promise<void> {
+  if (events.transport !== 'http' || !events.httpUrl) return;
+  try {
+    await fetch(events.httpUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(events.httpHeaders ?? {}) },
+      body: JSON.stringify({
+        eventId: `ev_${Math.random().toString(36).slice(2)}${Date.now()}`,
+        eventType,
+        agentId: agentName.toLowerCase(),
+        agentName,
+        timestamp: new Date().toISOString(),
+        data,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    /* best effort */
+  }
+}
 
 // ---- personas ---------------------------------------------------------------------------------
 
@@ -172,14 +202,15 @@ async function orchestrator(trace: Trace): Promise<Reply> {
 }
 
 async function reply(text: string, trace: Trace): Promise<Reply> {
-  switch (script) {
-    case 'orchestrator':
-      return orchestrator(trace);
-    case 'reviewer':
-      return reviewer();
-    default:
-      return author(text);
-  }
+  if (script === 'orchestrator') return orchestrator(trace);
+  const out = script === 'reviewer' ? reviewer() : author(text);
+  // Report the way a wrapper does: the work, then the end of the turn with its usage.
+  await emit('tool_call_start', { toolName: 'compose' });
+  await emit('tool_call_end', { toolName: 'compose', isError: false, durationMs: 1 });
+  await emit('agent_finished', {
+    usage: { inputTokens: out.tokens.input, outputTokens: out.tokens.output, llmCalls: 1 },
+  });
+  return out;
 }
 
 // ---- A2A server -------------------------------------------------------------------------------

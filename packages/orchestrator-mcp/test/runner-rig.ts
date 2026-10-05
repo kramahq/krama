@@ -8,7 +8,7 @@ import {
   type SendMessage,
 } from '@kramahq/engine';
 import { FakeAgentRuntime, createFakePorts, type FakePorts } from '@kramahq/engine/testing';
-import { OrchestratorMcp, OrchestratorRunner } from '../src/index.js';
+import { AgentEventCollector, OrchestratorMcp, OrchestratorRunner } from '../src/index.js';
 import { call, connect, def, pack } from './rig.js';
 
 export const user = { type: 'user' as const, id: 'u1', name: 'U1' };
@@ -18,6 +18,8 @@ export interface System {
   engine: Engine;
   mcp: OrchestratorMcp;
   runner: OrchestratorRunner;
+  /** Present when the system was built `withCollector`. */
+  collector?: AgentEventCollector;
   url: string;
   errors: unknown[];
   stop(): Promise<void>;
@@ -28,6 +30,7 @@ export async function system(
   shared?: FakePorts,
   policy: object = {},
   packs: Pack[] = [pack()],
+  withCollector = false,
 ): Promise<System> {
   const base = shared ?? createFakePorts(packs);
   const p: FakePorts = shared ? { ...base, agents: new FakeAgentRuntime() } : base;
@@ -46,12 +49,17 @@ export async function system(
   const errors: unknown[] = [];
   const mcp = new OrchestratorMcp({ engine, ports: p, directory, onError: (e) => errors.push(e) });
   const url = await mcp.listen();
+  const collector = withCollector
+    ? new AgentEventCollector({ engine, ports: p, onError: (e) => errors.push(e) })
+    : undefined;
+  await collector?.listen();
   const runner = new OrchestratorRunner({
     engine,
     ports: p,
     mcp,
     mcpBaseUrl: url,
     directory,
+    ...(collector ? { collector } : {}),
     onError: (e) => errors.push(e),
     maxNudges: 2,
   });
@@ -61,11 +69,13 @@ export async function system(
     engine,
     mcp,
     runner,
+    ...(collector ? { collector } : {}),
     url,
     errors,
     stop: async () => {
       await runner.shutdown();
       await mcp.close();
+      await collector?.close();
     },
   };
 }

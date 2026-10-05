@@ -7,6 +7,7 @@ import type { BudgetService } from './budget-service.js';
 import type { DecisionService } from './decision-service.js';
 import { findPhase, loadRun, nowIso, publish, runEvent, type Ctx } from './context.js';
 import { aggregateUsage } from '../domain/cost.js';
+import { MAX_TEXT, clip, sidebandActivity } from '../domain/signals.js';
 
 export interface DelegateInput {
   runId: string;
@@ -39,20 +40,6 @@ export interface DelegateResult {
   /** True when an earlier completed step with the same key was returned and no agent was contacted. */
   cached?: boolean;
 }
-
-/** Payload sizes kept in events; the full content is in artifacts, not the activity feed. */
-const MAX_TEXT = 4000;
-const MAX_RAW = 2000;
-const clip = (s: string | undefined, n: number) =>
-  s && s.length > n ? `${s.slice(0, n)}… (${s.length - n} more)` : s;
-const rawJson = (v: unknown): string | undefined => {
-  if (v === undefined) return undefined;
-  try {
-    return clip(JSON.stringify(v), MAX_RAW);
-  } catch {
-    return undefined;
-  }
-};
 
 /** Upper bound on consecutive access requests inside one delegation, so a misbehaving agent cannot loop forever. */
 const MAX_ACCESS_ROUNDS = 10;
@@ -196,6 +183,11 @@ export class StepService {
           ...(contextId ? { contextId } : {}),
           ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
           ...(input.signal ? { signal: input.signal } : {}),
+          correlation: {
+            runId: input.runId,
+            ...(input.phaseId ? { phaseId: input.phaseId } : {}),
+            stepId: step.id,
+          },
         })) {
           await this.handle(e, {
             step: () => step,
@@ -438,24 +430,8 @@ export class StepService {
         break;
       }
       case 'sideband': {
-        const type =
-          e.type === 'tool_call'
-            ? 'activity.tool_call'
-            : e.type === 'tool_result'
-              ? 'activity.tool_result'
-              : e.type === 'message'
-                ? 'activity.message'
-                : 'activity.status';
-        await k.emit([
-          k.activity(type, {
-            kind: e.type,
-            ...(e.toolName ? { toolName: e.toolName } : {}),
-            ...(e.isError !== undefined ? { isError: e.isError } : {}),
-            ...(e.durationMs !== undefined ? { durationMs: e.durationMs } : {}),
-            ...(e.text ? { text: clip(e.text, MAX_TEXT) } : {}),
-            ...(rawJson(e.raw) ? { raw: rawJson(e.raw) } : {}),
-          }),
-        ]);
+        const a = sidebandActivity(e);
+        await k.emit([k.activity(a.type, a.data)]);
         break;
       }
       case 'artifact': {
@@ -500,6 +476,11 @@ export class StepService {
             stepId: k.step().id,
             cost: e.cost,
             usage: e.usage,
+            agent: {
+              id: k.step().agent.id,
+              role: k.step().agent.role,
+              backend: k.step().agent.backend,
+            },
           },
           k.actor,
         );

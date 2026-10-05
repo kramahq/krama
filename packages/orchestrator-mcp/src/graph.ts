@@ -9,6 +9,7 @@ import {
   type ResolvedRole,
   type SpawnSpec,
 } from '@kramahq/engine';
+import type { EventClaims } from './collector.js';
 import { renderAgentsSection, type AgentLine } from './hints.js';
 import type { OrchestratorMcp } from './server.js';
 import {
@@ -98,6 +99,12 @@ export interface GraphEnv {
   directory: AgentDirectory;
   mcp: Pick<OrchestratorMcp, 'ensureInstance'>;
   subAgents?: SubAgentsOptions | undefined;
+  /**
+   * The event sink for agents Krama does not call itself. Their own tool calls and usage reach Krama only this way, because
+   * a caller sees just the result of a sub-agent. Agents Krama calls directly report on the A2A stream, so they get no sink
+   * (usage reported on both would count twice).
+   */
+  events?: { url: string; issue(claims: EventClaims): string } | undefined;
 }
 
 /** What one agent may call: the `subAgents` entries for its config, the lines for its prompt, and the secrets those entries need. */
@@ -270,6 +277,33 @@ export async function specFor(
   const persona = baseConfig ? '' : env.directory.systemPrompt(definition.id);
   const systemPrompt = [persona, extra.prompt, hints].filter(Boolean).join('\n\n');
   const hasOwnSubAgents = baseConfig !== undefined && 'subAgents' in baseConfig.json;
+  const instanceId = env.events && id !== plan.orchestrator ? env.ports.ids.next('agt') : undefined;
+  const sink =
+    env.events && instanceId
+      ? {
+          enabled: true,
+          transport: 'http',
+          httpUrl: `${env.events.url.replace(/\/$/, '')}/agent-events`,
+          // The wrapper does not substitute variables in header values, so the token is written into the owner-only derived config.
+          httpHeaders: {
+            Authorization: `Bearer ${env.events.issue({
+              runId: run.id,
+              instanceId,
+              agent: id,
+              role: definition.role,
+              backend: definition.backend.wrapper,
+            })}`,
+          },
+          httpTimeout: 5000,
+        }
+      : undefined;
+  const overrides = {
+    // The graph decides who an agent can call: its generated list replaces any `subAgents` in its own config.
+    ...(children.entries.length > 0 || hasOwnSubAgents
+      ? { subAgents: subAgentsConfig(children.entries, env.subAgents) }
+      : {}),
+    ...(sink ? { events: sink } : {}),
+  };
   const mcp = { ...(ext?.mcp ?? {}), ...(extra.mcp ?? {}) };
   const spawnEnv = { ...(ext?.env ?? {}), ...childEnv, ...(extra.env ?? {}) };
   return {
@@ -277,11 +311,9 @@ export async function specFor(
     workspace: { mode: 'shared', key: run.id },
     assignment: { runId: run.id },
     ...(systemPrompt ? { systemPrompt } : {}),
+    ...(instanceId ? { instanceId } : {}),
     ...(baseConfig ? { baseConfig } : {}),
-    // The graph decides who an agent can call: its generated list replaces any `subAgents` in its own config.
-    ...(children.entries.length > 0 || hasOwnSubAgents
-      ? { overrides: { subAgents: subAgentsConfig(children.entries, env.subAgents) } }
-      : {}),
+    ...(Object.keys(overrides).length > 0 ? { overrides } : {}),
     ...(Object.keys(mcp).length > 0 ? { mcp } : {}),
     ...(Object.keys(spawnEnv).length > 0 ? { env: spawnEnv } : {}),
   };
