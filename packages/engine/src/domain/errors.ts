@@ -12,7 +12,8 @@ export type DomainErrorCode =
   | 'backend_not_allowed'
   | 'unknown_phase'
   | 'not_found'
-  | 'roster_unsatisfied';
+  | 'roster_unsatisfied'
+  | 'invalid_graph';
 
 /** Contract problem code a domain error maps to at the API edge. */
 const PROBLEM: Record<DomainErrorCode, ProblemCode> = {
@@ -28,6 +29,7 @@ const PROBLEM: Record<DomainErrorCode, ProblemCode> = {
   unknown_phase: 'not_found',
   not_found: 'not_found',
   roster_unsatisfied: 'roster_unsatisfied',
+  invalid_graph: 'validation_failed',
 };
 
 /** A rule of the platform was violated. Never thrown for ordinary outcomes (those are return values). */
