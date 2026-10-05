@@ -4,6 +4,7 @@ import type { AgentRef } from '@kramahq/engine';
 export interface SubAgentEntry {
   name: string;
   agentCardUrl: string;
+  endpointUrlOverride?: string | undefined;
   auth?:
     | { mode: 'none' }
     | { mode: 'bearer'; token: string }
@@ -27,6 +28,25 @@ export interface SubAgentsOptions {
 export const subAgentName = (role: string): string =>
   role.toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
 
+/** A `subAgents` section for any agent, from the entries it may call. The caller can reach exactly these and nothing else. */
+export function subAgentsConfig(
+  entries: readonly SubAgentEntry[],
+  o: SubAgentsOptions = {},
+): SubAgentsConfig {
+  return {
+    agents: [...entries],
+    options: {
+      responseMode: 'artifact',
+      probeTimeoutMs: o.probeTimeoutMs ?? 5_000,
+      syncBudgetMs: o.syncBudgetMs ?? 30_000,
+    },
+  };
+}
+
+/** The agent card address of a running agent. */
+export const cardUrl = (agent: { url: string }): string =>
+  `${agent.url.replace(/\/$/, '')}/.well-known/agent-card.json`;
+
 /**
  * The orchestrator's `subAgents` section, generated from the run's resolved roster: one entry per local worker,
  * pointing at that worker's agent card. The orchestrator can only reach agents that are listed here, which is how
@@ -36,16 +56,12 @@ export function buildSubAgents(
   workers: readonly AgentRef[],
   o: SubAgentsOptions = {},
 ): SubAgentsConfig {
-  return {
-    agents: workers.map((w) => ({
+  return subAgentsConfig(
+    workers.map((w) => ({
       name: subAgentName(w.role),
-      agentCardUrl: `${w.url.replace(/\/$/, '')}/.well-known/agent-card.json`,
+      agentCardUrl: cardUrl(w),
       auth: { mode: 'none' as const },
     })),
-    options: {
-      responseMode: 'artifact',
-      probeTimeoutMs: o.probeTimeoutMs ?? 5_000,
-      syncBudgetMs: o.syncBudgetMs ?? 30_000,
-    },
-  };
+    o,
+  );
 }

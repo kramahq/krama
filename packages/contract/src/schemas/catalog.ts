@@ -100,6 +100,52 @@ export const artifactTypeDef = z.object({
   icon: z.string().optional(),
 });
 
+// ---- Agent graph (PACK-FORMAT) ------------------------------------------------
+
+/** A reference from one agent to another it may call. The hint is guidance for the caller and grants nothing. */
+export const subAgentRef = z.object({
+  agent: z.string(),
+  hint: z.string().max(500).optional(),
+});
+export type SubAgentRef = z.infer<typeof subAgentRef>;
+
+/** An agent Krama does not run. Field for field the wrapper's own sub-agent entry. */
+export const externalAgent = z.object({
+  name: z.string(),
+  agentCardUrl: z.string(),
+  endpointUrlOverride: z.string().optional(),
+  auth: z
+    .discriminatedUnion('mode', [
+      z.object({ mode: z.literal('none') }),
+      z.object({ mode: z.literal('bearer'), token: z.string() }),
+      z.object({
+        mode: z.literal('api_key'),
+        token: z.string(),
+        headerName: z.string().optional(),
+      }),
+    ])
+    .optional(),
+});
+export type ExternalAgent = z.infer<typeof externalAgent>;
+
+/**
+ * One entry of a pack's agent catalogue. `config` embeds the wrapper's own JSON config; `external` is a remote A2A agent.
+ * `definition` names an existing agent definition and is a bridge for packs written before the graph; `git` sources are
+ * loaded by the pack loader (M6.1).
+ */
+export const packAgent = z.object({
+  role: z.string().optional(),
+  description: z.string().optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  external: externalAgent.optional(),
+  definition: z.string().optional(),
+  git: z.string().optional(),
+  /** Environment variable name -> secret reference. Values are never stored here. */
+  secrets: z.record(z.string(), z.string()).optional(),
+  subAgents: z.array(subAgentRef).optional(),
+});
+export type PackAgent = z.infer<typeof packAgent>;
+
 export const packUi = z.object({
   terminology: z.record(z.string(), z.string()).optional(),
   phases: z
@@ -154,6 +200,9 @@ export const pack = z.object({
   engine: z.object({ requires: z.string(), compatible: z.boolean() }),
   methodology,
   roster: z.array(rosterEntry),
+  /** The agent graph: one orchestrator and a catalogue of agents wired by `subAgents`. Takes precedence over `roster` for `native` delegation. */
+  orchestrator: z.string().optional(),
+  agents: z.record(z.string(), packAgent).optional(),
   inputsSchema: jsonSchema,
   ui: packUi,
   artifactTypes: z.array(artifactTypeDef),

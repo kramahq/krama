@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { Run } from '@kramahq/contract';
-import type { AgentRef, Engine, Ports, ResolvedRole } from '@kramahq/engine';
+import type { AgentRef, Engine, Ports, ResolvedRole, SpawnSpec } from '@kramahq/engine';
 import { toToolError } from './errors.js';
 import {
   KRAMA_MODE_ONLY_TOOLS,
@@ -11,7 +11,7 @@ import {
   type SharedState,
   type ToolCtx,
 } from './tools.js';
-import { ensureWorker } from './workers.js';
+import { ensureInstance, ensureWorker } from './workers.js';
 import { TokenRegistry, type Scope } from './tokens.js';
 
 export interface OrchestratorMcpOptions {
@@ -92,6 +92,16 @@ export class OrchestratorMcp {
       { ports: this.o.ports, directory: this.o.directory, state: this.state },
       run,
       resolved,
+    );
+  }
+
+  /** Starts (or finds) one agent of the run's graph, shared by every parent that references it. */
+  ensureInstance(run: Run, key: string, spec: () => Promise<SpawnSpec>): Promise<AgentRef> {
+    return ensureInstance(
+      { ports: this.o.ports, directory: this.o.directory, state: this.state },
+      run,
+      key,
+      spec,
     );
   }
 

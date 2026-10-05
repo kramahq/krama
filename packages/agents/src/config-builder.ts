@@ -31,7 +31,11 @@ export interface RuntimeContext {
 }
 
 export type BuildProblemCode =
-  OptionIssue['code'] | 'unknown_common' | 'missing_env' | 'unresolved_secret';
+  | OptionIssue['code']
+  | 'unknown_common'
+  | 'missing_env'
+  | 'unresolved_secret'
+  | 'no_provider_section';
 export interface BuildProblem {
   path: string;
   code: BuildProblemCode;
@@ -56,6 +60,94 @@ const setPath = (target: Record<string, unknown>, dotted: string, value: unknown
   cur[parts.at(-1)!] = value;
 };
 
+const getPath = (source: Record<string, unknown>, dotted: string): unknown =>
+  dotted
+    .split('.')
+    .reduce<unknown>(
+      (cur, k) =>
+        cur && typeof cur === 'object' ? (cur as Record<string, unknown>)[k] : undefined,
+      source,
+    );
+
+const isPlain = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Overlays `over` on `base` without touching either: objects merge key by key, anything else (arrays included)
+ * is replaced. This is how Krama sets live sub-agents and event sinks on top of an agent's own config.
+ */
+export function deepMerge(
+  base: Record<string, unknown>,
+  over: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = structuredClone(base);
+  for (const [k, v] of Object.entries(over)) {
+    const cur = out[k];
+    out[k] = isPlain(cur) && isPlain(v) ? deepMerge(cur, v) : structuredClone(v);
+  }
+  return out;
+}
+
+/** Environment for the child: only the variables the backend declares, from bound secrets first, then the ambient environment. */
+function launchEnv(
+  descriptor: BackendDescriptor,
+  secrets: Record<string, string> | undefined,
+  rt: RuntimeContext,
+  problems: BuildProblem[],
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  const satisfied = new Set<string>();
+  for (const v of descriptor.env) {
+    const ref = secrets?.[v.name];
+    let value: string | undefined;
+    if (ref !== undefined) {
+      value = rt.secretValues?.[ref];
+      if (value === undefined)
+        problems.push({
+          path: `secrets.${v.name}`,
+          code: 'unresolved_secret',
+          message: `Secret "${ref}" for ${v.name} could not be resolved`,
+        });
+    } else {
+      value = rt.ambientEnv?.[v.name];
+    }
+    if (value !== undefined && value !== '') {
+      env[v.name] = value;
+      satisfied.add(v.group ?? v.name);
+    }
+  }
+  const groupsSeen = new Set<string>();
+  for (const v of descriptor.env) {
+    const key = v.group ?? v.name;
+    if (satisfied.has(key) || groupsSeen.has(key)) continue;
+    const members = descriptor.env.filter((x) => (x.group ?? x.name) === key);
+    const needed = v.group ? members.some((x) => x.required) || false : v.required;
+    if (needed) {
+      groupsSeen.add(key);
+      problems.push({
+        path: `env.${v.name}`,
+        code: 'missing_env',
+        message: `${members.map((x) => x.name).join(' or ')} is required by ${descriptor.id}`,
+      });
+    }
+  }
+  return env;
+}
+
+function launchArgs(descriptor: BackendDescriptor, rt: RuntimeContext, host: string): string[] {
+  return [
+    '--config',
+    rt.configPath,
+    '--port',
+    String(rt.port),
+    '--hostname',
+    host,
+    '--advertise-host',
+    host === '0.0.0.0' ? 'localhost' : host,
+    ...descriptor.launch.extraArgs,
+  ];
+}
+
 /**
  * Turns an agent definition plus runtime facts into a launch plan for one backend: the command and
  * arguments, the config file contents, and the environment. This is where Krama's common settings are
@@ -65,6 +157,7 @@ export function buildLaunch(
   descriptor: BackendDescriptor,
   def: DefinitionBackend,
   rt: RuntimeContext,
+  overrides?: Record<string, unknown>,
 ): BuiltLaunch {
   const problems: BuildProblem[] = validateOptions(descriptor, def.options, {
     workspaceProvided: true,
@@ -104,58 +197,80 @@ export function buildLaunch(
   if (rt.allowedTools?.length && m.allowedTools) setPath(section, m.allowedTools, rt.allowedTools);
   config[descriptor.providerKey] = section;
 
-  // Environment: only declared variables, from bound secrets first, then the ambient environment.
-  const env: Record<string, string> = {};
-  const satisfied = new Set<string>();
-  for (const v of descriptor.env) {
-    const ref = def.secrets?.[v.name];
-    let value: string | undefined;
-    if (ref !== undefined) {
-      value = rt.secretValues?.[ref];
-      if (value === undefined)
-        problems.push({
-          path: `secrets.${v.name}`,
-          code: 'unresolved_secret',
-          message: `Secret "${ref}" for ${v.name} could not be resolved`,
-        });
-    } else {
-      value = rt.ambientEnv?.[v.name];
-    }
-    if (value !== undefined && value !== '') {
-      env[v.name] = value;
-      satisfied.add(v.group ?? v.name);
-    }
-  }
-  const groupsSeen = new Set<string>();
-  for (const v of descriptor.env) {
-    const key = v.group ?? v.name;
-    if (satisfied.has(key) || groupsSeen.has(key)) continue;
-    const members = descriptor.env.filter((x) => (x.group ?? x.name) === key);
-    const needed = v.group ? members.some((x) => x.required) || false : v.required;
-    if (needed) {
-      groupsSeen.add(key);
-      problems.push({
-        path: `env.${v.name}`,
-        code: 'missing_env',
-        message: `${members.map((x) => x.name).join(' or ')} is required by ${descriptor.id}`,
-      });
-    }
-  }
-
-  const args = [
-    '--config',
-    rt.configPath,
-    '--port',
-    String(rt.port),
-    '--hostname',
-    host,
-    '--advertise-host',
-    host === '0.0.0.0' ? 'localhost' : host,
-    ...descriptor.launch.extraArgs,
-  ];
+  const env = launchEnv(descriptor, def.secrets, rt, problems);
+  const final = overrides ? deepMerge(config, overrides) : config;
   return {
     command: descriptor.package.bin,
-    args,
+    args: launchArgs(descriptor, rt, host),
+    env,
+    config: final,
+    problems,
+    ok: problems.length === 0,
+  };
+}
+
+/**
+ * Launch plan for an agent that already has its own wrapper config (PACK-FORMAT section 3). The config is kept as it is;
+ * Krama overlays only what belongs to this run: the port, the workspace, the prompt hints, its MCP servers and `overrides`
+ * (live sub-agents, events). The provider key in the config decides which backend it is.
+ */
+export function deriveLaunch(
+  descriptor: BackendDescriptor,
+  base: Record<string, unknown>,
+  def: { secrets?: Record<string, string> | undefined },
+  rt: RuntimeContext,
+  overrides?: Record<string, unknown>,
+): BuiltLaunch {
+  const problems: BuildProblem[] = [];
+  const key = descriptor.providerKey;
+  const own = base[key];
+  if (!isPlain(own)) {
+    problems.push({
+      path: key,
+      code: 'no_provider_section',
+      message: `The config has no "${key}" section, which ${descriptor.id} needs`,
+    });
+  } else {
+    problems.push(
+      ...validateOptions(descriptor, own, { workspaceProvided: true }).map((i) => ({
+        path: `${key}.${i.path}`,
+        code: i.code,
+        message: i.message,
+      })),
+    );
+  }
+  const host = rt.hostname ?? '127.0.0.1';
+  let config = deepMerge(base, {
+    server: {
+      port: rt.port,
+      hostname: host,
+      advertiseHost: host === '0.0.0.0' ? 'localhost' : host,
+    },
+  });
+  if (!isPlain(config.agentCard))
+    config.agentCard = { name: rt.agentName, description: rt.agentDescription };
+  if (rt.mcp && Object.keys(rt.mcp).length > 0) config = deepMerge(config, { mcp: rt.mcp });
+
+  const section: Record<string, unknown> = isPlain(config[key]) ? config[key] : {};
+  const m = descriptor.mapping;
+  setPath(section, m.workspace, rt.workspace);
+  if (rt.systemPrompt && m.systemPrompt) {
+    const existing = getPath(section, m.systemPrompt);
+    setPath(
+      section,
+      m.systemPrompt,
+      typeof existing === 'string' && existing.trim() !== ''
+        ? `${existing}\n\n${rt.systemPrompt}`
+        : rt.systemPrompt,
+    );
+  }
+  config[key] = section;
+  if (overrides) config = deepMerge(config, overrides);
+
+  const env = launchEnv(descriptor, def.secrets, rt, problems);
+  return {
+    command: descriptor.package.bin,
+    args: launchArgs(descriptor, rt, host),
     env,
     config,
     problems,

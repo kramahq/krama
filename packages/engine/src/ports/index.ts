@@ -292,8 +292,19 @@ export interface SpawnSpec {
   assignment?: Agent['assignment'];
   /** `isolated`: a private directory for this agent. `shared`: one directory shared by `key` (usually a run id). */
   workspace: { mode: 'isolated' | 'shared'; key: string };
-  /** Persona text, placed in the provider's own system-prompt key. */
+  /**
+   * Persona text, placed in the provider's own system-prompt key. When `baseConfig` is set the agent already has a
+   * prompt of its own, so this text is appended to it instead.
+   */
   systemPrompt?: string;
+  /**
+   * Start from the agent's own wrapper config, kept verbatim (PACK-FORMAT section 3), instead of building one from the
+   * definition. `json` is an embedded config; `dir` is a directory holding `config.json`, and the derived file is written
+   * next to it so relative paths keep working. The provider key in the config decides the backend.
+   */
+  baseConfig?: { json: Record<string, unknown> } | { dir: string };
+  /** Deep-merged over the config just before launch: live sub-agents, events, anything Krama sets for this run. */
+  overrides?: Record<string, unknown>;
   allowedTools?: string[];
   /** MCP servers for this agent, in the wrapper's `mcp` config format. */
   mcp?: Record<string, unknown>;

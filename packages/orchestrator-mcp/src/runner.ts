@@ -8,10 +8,20 @@ import {
   type GatewayEvent,
   type Ports,
   type RunExecutor,
+  type SpawnSpec,
 } from '@kramahq/engine';
+import {
+  childrenOf,
+  graphOf,
+  planFromPack,
+  planFromRoster,
+  specFor,
+  startWorkers,
+  type GraphEnv,
+} from './graph.js';
 import { firstMessage, renderOrchestratorPrompt } from './prompt.js';
 import type { OrchestratorMcp } from './server.js';
-import { buildSubAgents, type SubAgentsOptions } from './subagents.js';
+import type { SubAgentsOptions } from './subagents.js';
 import { mcpEntryFor } from './tokens.js';
 import type { AgentDirectory } from './tools.js';
 
@@ -396,56 +406,77 @@ export class OrchestratorRunner implements RunExecutor {
 
     const pack = await ports.packs.get(run.pack.id);
     if (!pack) throw new DomainError('not_found', `Pack ${run.pack.id} not found`);
-    const base = directory.definitions().find((x) => x.id === run.orchestrator.definitionId);
-    if (!base)
+
+    // Runs created before delegation modes existed relayed through Krama.
+    const mode = run.orchestrator.delegation ?? 'krama';
+    const declared = planFromPack(pack);
+    if (declared && mode !== 'native')
+      throw new DomainError(
+        'invalid_graph',
+        'This pack declares an agent graph, which needs native delegation: the relay still works from a roster only',
+      );
+    const roster = declared
+      ? []
+      : resolveRoster(pack.roster, directory.definitions(), {
+          backendUsable: (b) => directory.backendUsable(b),
+        }).resolved;
+    const orchestrator = declared
+      ? undefined
+      : directory.definitions().find((x) => x.id === run.orchestrator.definitionId);
+    if (!declared && !orchestrator)
       throw new DomainError(
         'not_found',
         `Orchestrator definition "${run.orchestrator.definitionId}" not found`,
       );
-    let definition = {
-      ...base,
-      backend: {
-        ...base.backend,
-        wrapper: run.orchestrator.backend,
-        ...(run.orchestrator.model ? { model: run.orchestrator.model } : {}),
-      },
-    };
-    const roster = resolveRoster(pack.roster, directory.definitions(), {
-      backendUsable: (b) => directory.backendUsable(b),
-    }).resolved;
 
-    // Runs created before delegation modes existed relayed through Krama.
-    const mode = run.orchestrator.delegation ?? 'krama';
+    let spec: SpawnSpec;
     if (mode === 'native') {
-      // The orchestrator calls workers itself, so every rostered worker must be up and addressable first, and its
-      // sub-agent config is generated from exactly that roster (an unlisted agent cannot be reached).
-      const workers = [];
-      for (const r of roster) workers.push(await mcp.ensureWorker(run, r));
-      definition = {
-        ...definition,
+      // The orchestrator calls its agents itself, so every agent it can reach must be up and addressable first, leaves
+      // first, and each parent's sub-agent config is generated from exactly what the graph lets it call.
+      const plan =
+        declared ??
+        planFromRoster(roster, {
+          definitionId: orchestrator!.id,
+          backend: run.orchestrator.backend,
+          model: run.orchestrator.model,
+        });
+      const graph = graphOf(plan);
+      const env: GraphEnv = { ports, directory, mcp, subAgents: this.o.subAgents };
+      const started = await startWorkers(env, run, pack, plan, graph);
+      const children = childrenOf(env, plan, graph, graph.orchestrator, started);
+      mcp.tokens.revokeRun(run.id);
+      const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
+      spec = await specFor(env, run, pack, plan, graph.orchestrator, children, {
+        prompt: renderOrchestratorPrompt({ run, pack, roster, agents: children.lines }),
+        hints: false, // the orchestrator's prompt already lists the agents it can call
+        mcp: entry.mcp,
+        env: entry.env,
+      });
+    } else {
+      const base = orchestrator!;
+      const definition = {
+        ...base,
         backend: {
-          ...definition.backend,
-          common: {
-            ...definition.backend.common,
-            subAgents: buildSubAgents(workers, this.o.subAgents),
-          },
+          ...base.backend,
+          wrapper: run.orchestrator.backend,
+          ...(run.orchestrator.model ? { model: run.orchestrator.model } : {}),
         },
       };
+      mcp.tokens.revokeRun(run.id);
+      const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
+      const persona = directory.systemPrompt(definition.id);
+      spec = {
+        definition,
+        workspace: { mode: 'shared', key: run.id },
+        assignment: { runId: run.id },
+        systemPrompt: [persona, renderOrchestratorPrompt({ run, pack, roster })]
+          .filter(Boolean)
+          .join('\n\n'),
+        mcp: entry.mcp,
+        env: entry.env,
+      };
     }
-
-    mcp.tokens.revokeRun(run.id);
-    const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
-    const persona = directory.systemPrompt(definition.id);
-    const spawned = await runtime.spawn({
-      definition,
-      workspace: { mode: 'shared', key: run.id },
-      assignment: { runId: run.id },
-      systemPrompt: [persona, renderOrchestratorPrompt({ run, pack, roster })]
-        .filter(Boolean)
-        .join('\n\n'),
-      mcp: entry.mcp,
-      env: entry.env,
-    });
+    const spawned = await runtime.spawn(spec);
     d.agentId = spawned.id;
     const ref = runtime.ref(spawned.id);
     if (!ref) throw new Error('The orchestrator agent stopped right after starting');

@@ -1,10 +1,13 @@
 import type { DelegationMode, Pack, Run } from '@kramahq/contract';
 import type { ResolvedRole } from '@kramahq/engine';
+import type { AgentLine } from './hints.js';
 
 export interface PromptInput {
   run: Run;
   pack: Pack;
   roster: readonly ResolvedRole[];
+  /** The agents the orchestrator can call, with the pack's hints. Used in `native` mode instead of the roster. */
+  agents?: readonly AgentLine[];
 }
 
 const list = (items: string[]) => items.map((i) => `- ${i}`).join('\n');
@@ -84,7 +87,12 @@ export const corePrompt = (mode: DelegationMode): string => fill(mode);
 export const CORE_PROMPT = corePrompt('krama');
 
 /** Renders the orchestrator's system prompt: the core above plus this pack's methodology and roster. */
-export function renderOrchestratorPrompt({ run, pack, roster }: PromptInput): string {
+export function renderOrchestratorPrompt({
+  run,
+  pack,
+  roster,
+  agents: graph,
+}: PromptInput): string {
   const mode: DelegationMode = run.orchestrator.delegation ?? 'krama';
   const m = pack.methodology;
   const t = pack.ui.terminology ?? {};
@@ -101,10 +109,15 @@ export function renderOrchestratorPrompt({ run, pack, roster }: PromptInput): st
     (e) =>
       `**${e.evaluator}** checks the work of **${e.producer}**; at most ${e.maxLoops} automated revision${e.maxLoops === 1 ? '' : 's'}${e.crossBackend ? '; prefers a different backend for independence' : ''}`,
   );
-  const agents = roster.map(
-    (r) =>
-      `**${r.role}** — ${r.definition.description} (backend ${r.backend}${r.count > 1 ? `, up to ${r.count} at once` : ''})`,
-  );
+  const agents = graph
+    ? graph.map(
+        (a) =>
+          `**${a.id}**${a.description ? ` — ${a.description.trim()}` : ''}${a.hint ? `. When to use: ${a.hint.trim()}` : ''}`,
+      )
+    : roster.map(
+        (r) =>
+          `**${r.role}** — ${r.definition.description} (backend ${r.backend}${r.count > 1 ? `, up to ${r.count} at once` : ''})`,
+      );
 
   return [
     corePrompt(mode),

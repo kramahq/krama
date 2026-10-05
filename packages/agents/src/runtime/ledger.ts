@@ -11,10 +11,10 @@ export interface LedgerEntry {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Atomic write: temp file then rename, retrying the transient `EBUSY`/`EPERM` that Windows can raise. */
-export async function writeFileAtomic(file: string, data: string): Promise<void> {
+export async function writeFileAtomic(file: string, data: string, mode?: number): Promise<void> {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, data);
+  writeFileSync(tmp, data, mode === undefined ? undefined : { mode });
   for (let i = 0; ; i++) {
     try {
       renameSync(tmp, file);
