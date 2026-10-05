@@ -39,8 +39,16 @@ export class PortAllocator {
     this.host = o.host ?? '127.0.0.1';
   }
 
-  async allocate(): Promise<number> {
+  /**
+   * A free port. With `preferred` (the address an agent had before it was restarted) that port is taken again when it is
+   * still free, so callers that were given the agent's address keep working; otherwise another is picked.
+   */
+  async allocate(preferred?: number): Promise<number> {
     const probe = this.o.probe ?? ((p: number) => canBind(p, this.host));
+    if (preferred !== undefined && !this.held.has(preferred) && (await probe(preferred))) {
+      this.held.add(preferred);
+      return preferred;
+    }
     for (let attempt = 0; attempt < 50; attempt++) {
       const port = this.o.range
         ? this.o.range.min + Math.floor(Math.random() * (this.o.range.max - this.o.range.min + 1))

@@ -230,7 +230,8 @@ export class ProcessAgentRuntime implements AgentRuntime {
     prior?: Entry,
   ): Promise<Entry> {
     const def = spec.definition;
-    const port = await this.ports.allocate();
+    // A restarted agent comes back where it was, so the agents that were given its address keep working.
+    const port = await this.ports.allocate(spec.preferredPort ?? prior?.agent.port);
     const workDir =
       spec.workspace.mode === 'shared'
         ? this.workspaces.shared(spec.workspace.key)

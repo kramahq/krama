@@ -300,6 +300,8 @@ export interface SpawnSpec {
   definition: AgentDefinition;
   /** Reuse an id (restart); generated when omitted. */
   instanceId?: string;
+  /** Start on this port when it is free: the address agents that call this one were configured with. */
+  preferredPort?: number;
   assignment?: Agent['assignment'];
   /** `isolated`: a private directory for this agent. `shared`: one directory shared by `key` (usually a run id). */
   workspace: { mode: 'isolated' | 'shared'; key: string };

@@ -97,7 +97,7 @@ export const graphOf = (plan: GraphPlan): AgentGraph => {
 export interface GraphEnv {
   ports: Ports;
   directory: AgentDirectory;
-  mcp: Pick<OrchestratorMcp, 'ensureInstance'>;
+  mcp: Pick<OrchestratorMcp, 'ensureInstance' | 'stopInstance'>;
   subAgents?: SubAgentsOptions | undefined;
   /**
    * The event sink for agents Krama does not call itself. Their own tool calls and usage reach Krama only this way, because
@@ -319,10 +319,20 @@ export async function specFor(
   };
 }
 
+export interface Started {
+  agents: Map<string, AgentRef>;
+  /** Agents that were running with an address that is no longer current, so their callers need restarting. Includes the orchestrator. */
+  stale: Set<string>;
+}
+
 /**
  * Starts every agent the orchestrator can reach, leaves first, and waits for each to answer before its parents start, so
  * each parent is configured with its children's live addresses. An agent with several parents is one shared instance.
  * External agents are never started. The orchestrator is not started here.
+ *
+ * Calling it again is the health check: agents still running are returned as they are, one that died is brought back where
+ * it was, and if an agent could not keep its address, every agent that was given that address is stopped and started
+ * again with the new one (and its own callers likewise), which is reported in `stale`.
  */
 export async function startWorkers(
   env: GraphEnv,
@@ -330,15 +340,20 @@ export async function startWorkers(
   pack: Pack,
   plan: GraphPlan,
   graph: AgentGraph,
-): Promise<Map<string, AgentRef>> {
-  const started = new Map<string, AgentRef>();
+): Promise<Started> {
+  const agents = new Map<string, AgentRef>();
+  const stale = new Set<string>();
   for (const id of graph.order) {
     if (id === graph.orchestrator || plan.agents[id]!.external) continue;
-    const children = childrenOf(env, plan, graph, id, started);
-    started.set(
-      id,
-      await env.mcp.ensureInstance(run, id, () => specFor(env, run, pack, plan, id, children)),
+    const children = childrenOf(env, plan, graph, id, agents);
+    // It holds an address that moved: stop it so it starts again with the current ones.
+    if (stale.has(id)) await env.mcp.stopInstance(run, id);
+    const { ref, moved } = await env.mcp.ensureInstance(run, id, () =>
+      specFor(env, run, pack, plan, id, children),
     );
+    agents.set(id, ref);
+    // Whoever was given the old address is out of date now.
+    if (moved) for (const parent of graph.parents[id] ?? []) stale.add(parent);
   }
-  return started;
+  return { agents, stale };
 }

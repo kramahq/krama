@@ -307,6 +307,97 @@ describe('where agents report their activity', () => {
   });
 });
 
+describe('an agent that dies between turns (health check and start)', () => {
+  /** Runs two orchestrator turns; `breakIt` runs inside the first, so the second finds the damage. */
+  const twoTurns = async (breakIt: (s: System) => Promise<void>) => {
+    const s = await make(graphPack());
+    const runId = await newRun(s);
+    const texts: string[] = [];
+    s.p.gateway.queue(
+      'orchestrator',
+      playOrchestrator(s, async (_c, m) => {
+        texts.push(m.text);
+        await breakIt(s);
+      }),
+      playOrchestrator(s, async (_c, m) => void texts.push(m.text)),
+    );
+    await s.runner.start(runId);
+    // The first turn ends with work left, so the runner asks the orchestrator to continue: that is the second turn.
+    await until(() => texts.length >= 2);
+    return { s, runId, texts };
+  };
+  const idOf = (s: System, definitionId: string) =>
+    s.p.agents.list().find((a) => a.definitionId === definitionId)!;
+  const card = (a: { url: string }) => `${a.url}/.well-known/agent-card.json`;
+
+  it('brings a dead agent back where it was and leaves everything else alone', async () => {
+    let before = 0;
+    let researcherUrl = '';
+    const { s, texts } = await twoTurns(async (sys) => {
+      const r = idOf(sys, 'researcher');
+      researcherUrl = r.url;
+      before = sys.p.agents.spawned.length;
+      await sys.p.agents.stop(r.id);
+    });
+    // Restarted in place: nothing was started again, and it answers at the address its callers were given.
+    expect(s.p.agents.spawned).toHaveLength(before);
+    const back = idOf(s, 'researcher');
+    expect(s.p.agents.ref(back.id)?.url).toBe(researcherUrl);
+    // The orchestrator was not replaced, so it is not told to start over.
+    expect(texts[1]).not.toContain('interrupted');
+    expect(s.errors).toEqual([]);
+  });
+
+  it('restarts the agents given an address that could not be kept, leaf first, and tells a replaced orchestrator', async () => {
+    const old: Record<string, { id: string; url: string }> = {};
+    const { s, texts } = await twoTurns(async (sys) => {
+      for (const d of ['researcher', 'reviewer', 'author/default', 'planner'])
+        old[d] = idOf(sys, d);
+      // The old port cannot be reused: restarting in place fails, so it is started afresh somewhere else.
+      sys.p.agents.restart = async () => {
+        throw new Error('port is gone');
+      };
+      await sys.p.agents.stop(old.researcher!.id);
+    });
+
+    const after = s.p.agents.spawned.slice(4); // the four started at the beginning, then what the health check did
+    expect(after.map((x) => x.definition.id)).toEqual(['researcher', 'reviewer', 'planner']);
+    // It asked for the old port back (the fake cannot honour it, a real runtime does when it is free).
+    expect(after[0]!.preferredPort).toBe(Number(new URL(old.researcher!.url).port));
+
+    const fresh = s.p.agents.list().filter((a) => a.status !== 'stopped');
+    const researcher = fresh.find((a) => a.definitionId === 'researcher')!;
+    expect(researcher.url).not.toBe(old.researcher!.url);
+    // Whoever was given the old address now has the new one, and only the researcher's callers were touched.
+    const reviewerSubs = after[1]!.overrides!.subAgents as { agents: { agentCardUrl: string }[] };
+    expect(reviewerSubs.agents.map((a) => a.agentCardUrl)).toEqual([card(researcher)]);
+    const plannerSubs = after[2]!.overrides!.subAgents as {
+      agents: { name: string; agentCardUrl: string }[];
+    };
+    expect(plannerSubs.agents.find((a) => a.name === 'researcher')!.agentCardUrl).toBe(
+      card(researcher),
+    );
+    expect(plannerSubs.agents.find((a) => a.name === 'author')!.agentCardUrl).toBe(
+      card(old['author/default']!),
+    );
+    // The stale callers were stopped; the author, which never called the researcher, was not.
+    expect(s.p.agents.get(old.reviewer!.id)!.status).toBe('stopped');
+    expect(s.p.agents.get(old.planner!.id)!.status).toBe('stopped');
+    expect(s.p.agents.get(old['author/default']!.id)!.status).not.toBe('stopped');
+    // The new orchestrator remembers nothing, so it is told the run was interrupted and resumed.
+    expect(texts[1]).toContain('interrupted and has been resumed');
+    expect(s.errors).toEqual([]);
+  });
+
+  it('starts an orchestrator that died as well, and tells it', async () => {
+    const { s, texts } = await twoTurns(async (sys) => {
+      await sys.p.agents.stop(idOf(sys, 'planner').id);
+    });
+    expect(s.p.agents.spawned.filter((x) => x.definition.id === 'planner')).toHaveLength(2);
+    expect(texts[1]).toContain('interrupted and has been resumed');
+  });
+});
+
 describe('a graph that cannot run', () => {
   const blockedWith = async (s: System) => {
     const runId = await newRun(s);

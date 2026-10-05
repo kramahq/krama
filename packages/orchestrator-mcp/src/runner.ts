@@ -62,6 +62,8 @@ interface Drive {
   ended: boolean;
   nudges: number;
   needsResume: boolean;
+  /** The orchestrator process was replaced mid-run; its next message must say so, since it remembers nothing. */
+  restarted?: boolean;
 }
 
 type TurnState = 'completed' | 'input_required' | 'failed' | 'timed_out' | 'canceled';
@@ -316,6 +318,10 @@ export class OrchestratorRunner implements RunExecutor {
     } catch (e) {
       return { state: 'failed', text: (e as Error).message };
     }
+    if (d.restarted) {
+      d.restarted = false;
+      text = `${firstMessage('resume')}\n\n${text}`;
+    }
     d.turn = new AbortController();
     const onStop = () => d.turn?.abort();
     d.abort.signal.addEventListener('abort', onStop, { once: true });
@@ -391,7 +397,6 @@ export class OrchestratorRunner implements RunExecutor {
     const runtime = ports.agents;
     if (!runtime) throw new DomainError('not_found', 'No agent runtime is configured');
     const existing = d.agentId ? runtime.ref(d.agentId) : undefined;
-    if (existing) return existing;
 
     const pack = await ports.packs.get(run.pack.id);
     if (!pack) throw new DomainError('not_found', `Pack ${run.pack.id} not found`);
@@ -404,6 +409,9 @@ export class OrchestratorRunner implements RunExecutor {
         'invalid_graph',
         'This pack declares an agent graph, which needs native delegation: the relay still works from a roster only',
       );
+    // In the relay the workers start on first delegation, so a running orchestrator needs nothing more.
+    if (existing && mode !== 'native') return existing;
+
     const roster = declared
       ? []
       : resolveRoster(pack.roster, directory.definitions(), {
@@ -421,7 +429,8 @@ export class OrchestratorRunner implements RunExecutor {
     let spec: SpawnSpec;
     if (mode === 'native') {
       // The orchestrator calls its agents itself, so every agent it can reach must be up and addressable first, leaves
-      // first, and each parent's sub-agent config is generated from exactly what the graph lets it call.
+      // first, and each parent's sub-agent config is generated from exactly what the graph lets it call. Doing this at
+      // every turn is the health check: a dead agent is brought back where it was.
       const plan =
         declared ??
         planFromRoster(roster, {
@@ -440,8 +449,14 @@ export class OrchestratorRunner implements RunExecutor {
           ? { url: collector.url, issue: (claims) => collector.tokens.issue(claims) }
           : undefined,
       };
-      const started = await startWorkers(env, run, pack, plan, graph);
-      const children = childrenOf(env, plan, graph, graph.orchestrator, started);
+      const { agents, stale } = await startWorkers(env, run, pack, plan, graph);
+      if (existing) {
+        if (!stale.has(graph.orchestrator)) return existing;
+        // An agent it calls came back at another address, so it must be started again to be given the new one. Its
+        // conversation goes with it; the run's state is in Krama, which the new one reads with get_run.
+        await runtime.stop(existing.id).catch(() => undefined);
+      }
+      const children = childrenOf(env, plan, graph, graph.orchestrator, agents);
       mcp.tokens.revokeRun(run.id);
       const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
       spec = await specFor(env, run, pack, plan, graph.orchestrator, children, {
@@ -473,6 +488,11 @@ export class OrchestratorRunner implements RunExecutor {
         mcp: entry.mcp,
         env: entry.env,
       };
+    }
+    // A replacement process remembers nothing of the conversation, whatever the reason it is a replacement.
+    if (d.agentId) {
+      d.contextId = undefined;
+      d.restarted = true;
     }
     const spawned = await runtime.spawn(spec);
     d.agentId = spawned.id;
