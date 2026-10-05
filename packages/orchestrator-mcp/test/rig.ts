@@ -45,7 +45,7 @@ const user = { type: 'user' as const, id: 'u1', name: 'U1' };
 
 export async function rig(opts: { policy?: object; start?: boolean } = {}): Promise<Rig> {
   const p = createFakePorts([pack()]);
-  const engine = createEngine(p, opts.policy ?? {});
+  const engine = createEngine(p, { defaultDelegation: 'krama', ...opts.policy });
   const defs = [def('author', ['write']), def('reviewer', ['review'], 'a2a-claude')];
   const directory = {
     prompts: { 'author/default': 'You write.', 'reviewer/default': 'You review.' } as Record<

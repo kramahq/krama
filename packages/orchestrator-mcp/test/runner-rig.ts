@@ -31,7 +31,8 @@ export async function system(
 ): Promise<System> {
   const base = shared ?? createFakePorts(packs);
   const p: FakePorts = shared ? { ...base, agents: new FakeAgentRuntime() } : base;
-  const engine = createEngine(p, policy);
+  // These scenarios drive the relay (`delegate_to_agent`); native delegation has its own tests.
+  const engine = createEngine(p, { defaultDelegation: 'krama', ...policy });
   const defs = [
     def('author', ['write']),
     def('reviewer', ['review'], 'a2a-claude'),

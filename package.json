@@ -15,7 +15,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "changeset": "changeset",
-    "prepare": "husky"
+    "prepare": "husky",
+    "demo": "turbo run build --filter=@kramahq/server && node apps/server/dist/demo/run.js"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",

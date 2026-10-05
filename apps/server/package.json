@@ -18,6 +18,19 @@
   "scripts": {
     "build": "tsc -b",
     "test": "vitest run --passWithNoTests",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "demo": "node dist/demo/run.js"
+  },
+  "bin": {
+    "krama-demo": "./dist/demo/run.js"
+  },
+  "dependencies": {
+    "@kramahq/agents": "workspace:*",
+    "@kramahq/artifacts-fs": "workspace:*",
+    "@kramahq/contract": "workspace:*",
+    "@kramahq/engine": "workspace:*",
+    "@kramahq/orchestrator-mcp": "workspace:*",
+    "@kramahq/store": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.0"
   }
 }
