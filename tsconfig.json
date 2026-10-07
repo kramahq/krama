@@ -17,7 +17,6 @@
     { "path": "packages/sdk" },
     { "path": "apps/server" },
     { "path": "apps/cli" },
-    { "path": "apps/ui" },
     { "path": "apps/mock" }
   ]
 }
