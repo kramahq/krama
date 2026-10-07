@@ -71,7 +71,7 @@ describe('persistence', () => {
     const dir = mkdtempSync(join(tmpdir(), 'krama store with spaces-'));
     try {
       const a = await openPglite(dir);
-      expect(a.applied).toEqual(['0000_init', '0001_events']);
+      expect(a.applied).toEqual(['0000_init', '0001_events', '0002_audit_ledger']);
       await a.store.runs.put(sampleRun('run_1'));
       await a.store.audit.append({
         id: 'aud_1',

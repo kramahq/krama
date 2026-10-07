@@ -41,5 +41,23 @@ export const MIGRATIONS: Migration[] = [
       "CREATE INDEX \"events_type_idx\" ON \"events\" USING btree (\"type\",\"seq\");",
       "CREATE INDEX \"events_subject_idx\" ON \"events\" USING btree (\"subject_type\",\"subject_id\",\"seq\");"
     ]
+  },
+  {
+    "name": "0002_audit_ledger",
+    "statements": [
+      "CREATE TABLE \"audit_heads\" (\n\t\"chain\" text PRIMARY KEY NOT NULL,\n\t\"seq\" integer NOT NULL,\n\t\"hash\" text NOT NULL\n);",
+      "CREATE TABLE \"audit_records\" (\n\t\"chain\" text NOT NULL,\n\t\"seq\" integer NOT NULL,\n\t\"id\" text NOT NULL,\n\t\"at\" text NOT NULL,\n\t\"kind\" text NOT NULL,\n\t\"actor_id\" text NOT NULL,\n\t\"run_id\" text,\n\t\"source_event_id\" text,\n\t\"record\" text NOT NULL,\n\tCONSTRAINT \"audit_records_chain_seq_pk\" PRIMARY KEY(\"chain\",\"seq\")\n);",
+      "CREATE UNIQUE INDEX \"audit_records_source_idx\" ON \"audit_records\" USING btree (\"chain\",\"source_event_id\");",
+      "CREATE INDEX \"audit_records_at_idx\" ON \"audit_records\" USING btree (\"chain\",\"at\");",
+      "CREATE INDEX \"audit_records_kind_idx\" ON \"audit_records\" USING btree (\"kind\",\"at\");",
+      "CREATE FUNCTION audit_refuse_change() RETURNS trigger LANGUAGE plpgsql AS $fn$\nBEGIN\n\tRAISE EXCEPTION 'audit records are append-only: % on % is not allowed', TG_OP, TG_TABLE_NAME USING ERRCODE = '55000';\nEND\n$fn$;",
+      "CREATE TRIGGER audit_records_no_update BEFORE UPDATE ON \"audit_records\" FOR EACH ROW EXECUTE FUNCTION audit_refuse_change();",
+      "CREATE TRIGGER audit_records_no_delete BEFORE DELETE ON \"audit_records\" FOR EACH ROW EXECUTE FUNCTION audit_refuse_change();",
+      "CREATE TRIGGER audit_records_no_truncate BEFORE TRUNCATE ON \"audit_records\" FOR EACH STATEMENT EXECUTE FUNCTION audit_refuse_change();",
+      "CREATE FUNCTION audit_heads_forward_only() RETURNS trigger LANGUAGE plpgsql AS $fn$\nBEGIN\n\tIF NEW.chain <> OLD.chain OR NEW.seq <= OLD.seq THEN\n\t\tRAISE EXCEPTION 'an audit head only moves forward' USING ERRCODE = '55000';\n\tEND IF;\n\tRETURN NEW;\nEND\n$fn$;",
+      "CREATE TRIGGER audit_heads_forward BEFORE UPDATE ON \"audit_heads\" FOR EACH ROW EXECUTE FUNCTION audit_heads_forward_only();",
+      "CREATE TRIGGER audit_heads_no_delete BEFORE DELETE ON \"audit_heads\" FOR EACH ROW EXECUTE FUNCTION audit_refuse_change();",
+      "CREATE TRIGGER audit_heads_no_truncate BEFORE TRUNCATE ON \"audit_heads\" FOR EACH STATEMENT EXECUTE FUNCTION audit_refuse_change();"
+    ]
   }
 ];

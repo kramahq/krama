@@ -13,6 +13,7 @@ import {
 export interface Expectation {
   toBe(v: unknown): void;
   toEqual(v: unknown): void;
+  toMatchObject(v: unknown): void;
   toBeUndefined(): void;
   toBeDefined(): void;
   toHaveLength(n: number): void;

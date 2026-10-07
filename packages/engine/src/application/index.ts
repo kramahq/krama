@@ -35,3 +35,4 @@ export function createEngine(ports: Ports, policy: Policy = {}): Engine {
     ingest: new IngestService(ctx, budget),
   };
 }
+export * from './audit-writer.js';
