@@ -1,4 +1,5 @@
 import type {
+  AuditActor,
   AuditBlobRef,
   AuditDraft,
   AuditRecord,
@@ -247,6 +248,48 @@ export interface AuditBlobs {
   has(sha256: string): Promise<boolean>;
 }
 
+// ---- Transcript ------------------------------------------------------------
+
+/** One entry of a run's transcript: something said or done in the run, written losslessly (ADR-0013). */
+export interface TranscriptWrite {
+  runId: string;
+  actor: AuditActor;
+  /** `message.user`, `message.agent`, `tool.call`, `tool.result`, `thinking`, `status`, `usage`, `a2a.request`, `a2a.frame`, `decision.requested`, ... */
+  kind: string;
+  source: AuditRecord['source'];
+  /** The sender's own id for this event; a second write with the same one is not recorded again. */
+  sourceEventId?: string;
+  at?: string;
+  phaseId?: string;
+  stepId?: string;
+  decisionId?: string;
+  correlation?: Record<string, string>;
+  /** The body, in full. Secrets are masked and large bodies are stored by hash; nothing is shortened. */
+  payload?: unknown;
+  /** What the caller saw, so silence and unbalanced starts can be reported as findings when the run closes. */
+  observe?: {
+    agentId: string;
+    role?: string;
+    channel: 'sink' | 'stream';
+    traceId?: string;
+    lifecycle?: 'started' | 'finished' | 'error';
+  };
+}
+
+/** Where everything said and done in a run is recorded before it is shown (write-ahead). */
+export interface Transcript {
+  /** Records one entry. A failure is counted and reported, and does not stop the run (unless the recorder is strict). */
+  record(w: TranscriptWrite): Promise<void>;
+  /** Records something that belongs to no single run (an event that could not be attributed) on the control chain. */
+  recordControl(w: Omit<TranscriptWrite, 'runId'> & { runId?: string }): Promise<void>;
+  /** An agent was started so that it reports to the event sink; silence from it while Krama saw it work is a finding. */
+  expectSink(runId: string, agent: { id: string; role?: string }): void;
+  /** Krama saw this agent work (it sent it a task). */
+  noteActivity(runId: string, agentId: string): void;
+  /** Writes the findings and a summary for the run, once. */
+  closeRun(runId: string): Promise<void>;
+}
+
 // ---- Artifacts -------------------------------------------------------------
 
 export interface PutArtifact {
@@ -329,6 +372,24 @@ export type GatewayEvent =
     }
   | { kind: 'artifact'; name: string; mediaType: string; bytes?: Uint8Array; data?: unknown }
   | { kind: 'usage'; usage: Usage[]; cost: Spend };
+
+/** One thing that passed between Krama and an agent over A2A, as the gateway saw it. */
+export interface GatewayTapEvent {
+  /** `out`: Krama to the agent. `in`: the agent to Krama. */
+  direction: 'out' | 'in';
+  kind: 'request' | 'frame' | 'error' | 'cancel';
+  agent: AgentRef;
+  correlation?: SendMessage['correlation'];
+  /** The A2A message id of the call. Everything that belongs to one call shares it. */
+  callId: string;
+  /** Position within the call, from 0. */
+  index: number;
+  /** The protocol payload as plain JSON: the request, one stream frame, or what went wrong. */
+  body: unknown;
+}
+
+/** Called for every request and frame, synchronously and without waiting; it must not throw or slow the stream. */
+export type GatewayTap = (e: GatewayTapEvent) => void;
 
 export interface SendMessage {
   text: string;
@@ -459,6 +520,8 @@ export interface Ports {
   /** The hash-chained audit record (M2.5); becomes required when capture is wired (M3.5). */
   ledger?: AuditLedger;
   auditBlobs?: AuditBlobs;
+  /** Records the run transcript before it is shown (M3.5). Absent in tests that do not need it. */
+  transcript?: Transcript;
   gateway?: AgentGateway;
   executor?: RunExecutor;
   workItems?: readonly WorkItemSource[];

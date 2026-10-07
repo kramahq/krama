@@ -8,20 +8,27 @@ import {
 } from '@kramahq/agents';
 import type { AgentDefinition, Pack } from '@kramahq/contract';
 import {
+  AuditWriter,
   EnvSecretResolver,
   NullNotifier,
+  Redactor,
   SystemClock,
+  TranscriptRecorder,
   UlidIdGenerator,
   createEngine,
+  createGatewayTap,
   type Engine,
   type PackRepository,
   type Policy,
   type Ports,
+  type SecretResolver,
 } from '@kramahq/engine';
 import {
   AgentEventCollector,
+  EventTokens,
   OrchestratorMcp,
   OrchestratorRunner,
+  TokenRegistry,
   type AgentDirectory,
   type SubAgentsOptions,
 } from '@kramahq/orchestrator-mcp';
@@ -58,6 +65,8 @@ export interface KramaOptions {
 export interface Krama {
   engine: Engine;
   ports: Ports;
+  /** Writes everything said and done in a run to the audit ledger, with secrets masked first. */
+  transcript: TranscriptRecorder;
   mcp: OrchestratorMcp;
   /** Where agents Krama does not call itself report their activity and usage (`POST /agent-events`). */
   collector: AgentEventCollector;
@@ -93,7 +102,26 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     o.auditStorage === 'separate' ? await openPglite(join(o.home, 'audit-db')) : undefined;
   const clock = new SystemClock();
   const ids = new UlidIdGenerator();
-  const secrets = new EnvSecretResolver();
+  // Secrets the platform knows about (the ones it passes to agents, the tokens it issues) are masked before anything is
+  // recorded, so they never reach the ledger.
+  const redactor = new Redactor();
+  for (const [k, v] of Object.entries(process.env))
+    if (k.startsWith('KRAMA_SECRET_')) redactor.addValue(v, 'secret');
+  const envSecrets = new EnvSecretResolver();
+  const secrets: SecretResolver = {
+    resolve: async (ref) => {
+      const v = await envSecrets.resolve(ref);
+      redactor.addValue(v, `secret:${ref}`);
+      return v;
+    },
+  };
+  const ledger = (auditDb ?? db).ledger;
+  const auditBlobs = new FsAuditBlobs(join(o.home, 'audit-blobs'));
+  const transcript = new TranscriptRecorder({
+    writer: new AuditWriter(ledger, auditBlobs),
+    redactor,
+    ...(o.onError ? { onError: (e, where) => o.onError!(e, where) } : {}),
+  });
   const runtime = new ProcessAgentRuntime({
     catalog: backends,
     events: db.events,
@@ -118,9 +146,10 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     notifier: new NullNotifier(),
     secrets,
     memory: db.memory,
-    ledger: (auditDb ?? db).ledger,
-    auditBlobs: new FsAuditBlobs(join(o.home, 'audit-blobs')),
-    gateway: new A2AGateway(),
+    ledger,
+    auditBlobs,
+    transcript,
+    gateway: new A2AGateway({ tap: createGatewayTap(transcript) }),
     backends,
     agents: runtime,
   };
@@ -136,12 +165,14 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     engine,
     ports,
     directory,
+    tokens: new TokenRegistry(undefined, (t) => redactor.addValue(t, 'krama-token')),
     ...(o.onError ? { onError: (e, tool) => o.onError!(e, `mcp:${tool}`) } : {}),
   });
   const mcpBaseUrl = await mcp.listen();
   const collector = new AgentEventCollector({
     engine,
     ports,
+    tokens: new EventTokens(undefined, (t) => redactor.addValue(t, 'krama-token')),
     ...(o.onError ? { onError: (e) => o.onError!(e, 'collector') } : {}),
   });
   await collector.listen();
@@ -162,6 +193,7 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
   return {
     engine,
     ports,
+    transcript,
     mcp,
     collector,
     runner,
@@ -176,6 +208,7 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
       await mcp.close();
       await collector.close();
       await runtime.shutdown();
+      await transcript.closeAll(); // whatever a run's record is missing is written down before the database closes
       await db.close();
       await auditDb?.close();
     },

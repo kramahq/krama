@@ -506,6 +506,8 @@ export class OrchestratorRunner implements RunExecutor {
     const run = await this.run(d.runId).catch(() => undefined);
     // While the run can still continue (waiting, blocked, paused) keep its agents; otherwise release everything.
     if (!run || isTerminalRun(run.status)) {
+      // The run is over: whatever the record is missing is written down before the run's agents go away.
+      await this.o.ports.transcript?.closeRun(d.runId).catch(() => undefined);
       this.o.collector?.tokens.revokeRun(d.runId);
       const workers = this.o.mcp.releaseRun(d.runId);
       for (const id of [...workers, ...(d.agentId ? [d.agentId] : [])])

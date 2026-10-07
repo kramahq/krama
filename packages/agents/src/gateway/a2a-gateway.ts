@@ -6,7 +6,13 @@ import {
   RestTransportFactory,
   type Client,
 } from '@a2a-js/sdk/client';
-import type { AgentGateway, AgentRef, GatewayEvent, SendMessage } from '@kramahq/engine';
+import type {
+  AgentGateway,
+  AgentRef,
+  GatewayEvent,
+  GatewayTap,
+  SendMessage,
+} from '@kramahq/engine';
 import { reportCard, type CardReport } from './card-report.js';
 import { ArtifactAssembler, decodeEvent, isTerminal, type DecodeState } from './codec.js';
 import {
@@ -50,6 +56,8 @@ export interface GatewayOptions {
   cardTtlMs?: number;
   /** Budget for the calls that are not a delegation: reading a card, cancelling. Default 10 s. */
   requestTimeoutMs?: number;
+  /** Sees every request and stream frame, for the run's transcript. A tap that throws is ignored. */
+  tap?: GatewayTap;
 }
 
 const newMessageId = () => crypto.randomUUID();
@@ -187,11 +195,33 @@ export class A2AGateway implements AgentGateway {
 
     const st: DecodeState = { assembler: new ArtifactAssembler() };
     let sawTerminal = false;
+    const callId = newMessageId();
+    let tapIndex = 0;
+    const tap = (
+      direction: 'out' | 'in',
+      kind: 'request' | 'frame' | 'error' | 'cancel',
+      body: unknown,
+    ) => {
+      if (!this.o.tap) return;
+      try {
+        this.o.tap({
+          direction,
+          kind,
+          agent,
+          ...(message.correlation ? { correlation: message.correlation } : {}),
+          callId,
+          index: tapIndex++,
+          body,
+        });
+      } catch {
+        /* a tap must never break a delegation */
+      }
+    };
     try {
       const { client } = await this.clientFor(agent);
       const request = SendMessageRequest.fromJSON({
         message: {
-          messageId: newMessageId(),
+          messageId: callId,
           role: 'ROLE_USER',
           parts: [{ text: message.text, mediaType: 'text/plain' }],
           ...(message.contextId ? { contextId: message.contextId } : {}),
@@ -199,11 +229,13 @@ export class A2AGateway implements AgentGateway {
         },
         configuration: { returnImmediately: false },
       });
+      tap('out', 'request', SendMessageRequest.toJSON(request));
       try {
         for await (const sr of client.sendMessageStream(request, { signal: ctl.signal })) {
           bump();
           const wire = streamToWire(sr);
           if (!wire) continue;
+          tap('in', 'frame', wire);
           for (const g of decodeEvent(wire, st)) {
             if (g.kind === 'state' && isTerminal(g.state)) sawTerminal = true;
             yield g;
@@ -211,7 +243,9 @@ export class A2AGateway implements AgentGateway {
         }
       } catch (e) {
         if (ctl.signal.aborted) throw e;
-        throw this.fail(e, agent, 'the delegation');
+        const failure = this.fail(e, agent, 'the delegation');
+        tap('in', 'error', { code: failure.code, message: failure.message });
+        throw failure;
       }
       for (const g of st.assembler.flush()) yield g;
       if (!sawTerminal && st.lastState !== 'input_required' && st.taskId) {
@@ -226,7 +260,10 @@ export class A2AGateway implements AgentGateway {
     } catch (e) {
       if (ctl.signal.aborted && why) {
         // Stop the remote task too, so it does not keep running (and spending) unattended.
-        if (st.taskId) await this.cancel(agent, st.taskId).catch(() => undefined);
+        if (st.taskId) {
+          tap('out', 'cancel', { taskId: st.taskId, reason: why });
+          await this.cancel(agent, st.taskId).catch(() => undefined);
+        }
         const state = why === 'caller' ? 'canceled' : 'timed_out';
         yield {
           kind: 'state',

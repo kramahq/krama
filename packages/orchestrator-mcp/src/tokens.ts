@@ -17,7 +17,11 @@ const hash = (t: string) => createHash('sha256').update(t).digest();
  */
 export class TokenRegistry {
   private readonly byHash = new Map<string, Scope>();
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(
+    private readonly now: () => number = Date.now,
+    /** Told every token the moment it is made, so the platform can keep it out of anything it records. */
+    private readonly onIssue?: (token: string) => void,
+  ) {}
 
   issue(runId: string, ttlMs = 6 * 60 * 60_000, delegation: DelegationMode = 'krama'): string {
     const token = `krm_${randomBytes(32).toString('base64url')}`;
@@ -27,6 +31,7 @@ export class TokenRegistry {
       delegation,
       expiresAt: this.now() + ttlMs,
     });
+    this.onIssue?.(token);
     return token;
   }
 

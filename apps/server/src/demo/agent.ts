@@ -34,6 +34,8 @@ const events = (config.events ?? {}) as {
  * What a real wrapper does when `events.transport` is `http`: POST each event to the sink, best effort. The agent never
  * fails because the sink is down.
  */
+let traceId = 'trace_0';
+
 async function emit(eventType: string, data: Json): Promise<void> {
   if (events.transport !== 'http' || !events.httpUrl) return;
   try {
@@ -45,6 +47,7 @@ async function emit(eventType: string, data: Json): Promise<void> {
         eventType,
         agentId: agentName.toLowerCase(),
         agentName,
+        traceId,
         timestamp: new Date().toISOString(),
         data,
       }),
@@ -117,7 +120,7 @@ async function callWorker(agentCardUrl: string, text: string): Promise<string> {
   return textOf(body.result);
 }
 
-type Trace = (tool: string) => void;
+type Trace = (tool: string, name?: string, extra?: Json) => void;
 
 async function orchestrator(trace: Trace): Promise<Reply> {
   const mcp = (config.mcp as Json | undefined)?.krama as { url: string } | undefined;
@@ -205,12 +208,26 @@ async function orchestrator(trace: Trace): Promise<Reply> {
   }
 }
 
+/** About 12,000 characters, with an API key in the middle. Used to show that the transcript keeps all of it, unmasked only where it is safe. */
+export const DEMO_SECRET = 'sk-demoSECRETkeyabcdefghijklmnop';
+const LONG_OUTPUT = `${'compose: line of tool output that goes on and on.\n'.repeat(140)}api_key=${DEMO_SECRET}\n${'compose: more output after the key.\n'.repeat(140)}END-OF-OUTPUT`;
+
 async function reply(text: string, trace: Trace): Promise<Reply> {
   if (script === 'orchestrator') return orchestrator(trace);
   const out = script === 'reviewer' ? reviewer() : author(text);
-  // Report the way a wrapper does: the work, then the end of the turn with its usage.
-  await emit('tool_call_start', { toolName: 'compose' });
-  await emit('tool_call_end', { toolName: 'compose', isError: false, durationMs: 1 });
+  // Report the way a wrapper does: the turn starts, the work, then the end of the turn with its usage.
+  traceId = `trace_${Math.random().toString(36).slice(2)}`;
+  await emit('agent_started', {});
+  await emit('tool_call_start', { toolName: 'compose', input: { task: text } });
+  // A real tool prints a lot: far more than an activity feed shows, with a credential in the middle of it.
+  await emit('tool_call_end', {
+    toolName: 'compose',
+    isError: false,
+    durationMs: 1,
+    output: LONG_OUTPUT,
+  });
+  // A wrapper that streams over A2A reports the same tool result there, with what it printed.
+  trace('compose', 'trace.mcp', { isError: false, durationMs: 1, output: LONG_OUTPUT });
   await emit('agent_finished', {
     usage: { inputTokens: out.tokens.input, outputTokens: out.tokens.output, llmCalls: 1 },
   });
@@ -280,7 +297,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     });
   }
   // Tool calls become `trace.mcp.start` sideband artifacts, the way a real wrapper reports them.
-  const trace: Trace = (tool) => {
+  const trace: Trace = (tool, name = 'trace.mcp.start', extra = {}) => {
     if (!streaming) return;
     frame({
       artifactUpdate: {
@@ -288,8 +305,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         contextId,
         artifact: {
           artifactId: `${taskId}_trace_${Math.random().toString(36).slice(2, 6)}`,
-          name: 'trace.mcp.start',
-          parts: [{ data: { toolName: tool }, mediaType: 'application/json' }],
+          name,
+          parts: [{ data: { toolName: tool, ...extra }, mediaType: 'application/json' }],
         },
         lastChunk: true,
       },
