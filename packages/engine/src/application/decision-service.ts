@@ -12,7 +12,17 @@ import { assertCanAdvance } from '../domain/invariants.js';
 import { transitionPhase } from '../domain/phase-machine.js';
 import { transitionRun } from '../domain/run-machine.js';
 import type { RunRecord, Store } from '../ports/index.js';
-import { audit, findPhase, nowIso, phaseEvent, publish, runEvent, type Ctx } from './context.js';
+import {
+  audit,
+  auditActorOf,
+  findPhase,
+  nowIso,
+  phaseEvent,
+  publish,
+  runEvent,
+  transcribe,
+  type Ctx,
+} from './context.js';
 import { completeIfDone, reopenForLoop, startReadyPhases } from './run-ops.js';
 
 export interface ResolveCommand {
@@ -51,6 +61,18 @@ export class DecisionService {
       });
       return { record, events };
     });
+    // The question put to a person is on record before the person can see it.
+    if (record.decision.runId)
+      await transcribe(c, {
+        runId: record.decision.runId,
+        actor: { type: 'orchestrator', id: 'orchestrator' },
+        kind: 'decision.requested',
+        source: 'mcp',
+        sourceEventId: `decision.requested:${record.decision.id}`,
+        decisionId: record.decision.id,
+        ...(record.decision.phaseId ? { phaseId: record.decision.phaseId } : {}),
+        payload: { decision: record.decision },
+      });
     await publish(c, events);
     return record.decision;
   }
@@ -98,6 +120,23 @@ export class DecisionService {
       events.push(...(await this.applyEffect(tx, res.record, res.effect, cmd, by)));
       return { decision: d, events, effect: res.effect };
     });
+    // The answer a person gave, and who gave it, is on record before it takes effect. A vote that does not settle
+    // the decision (one of several approvers) is recorded too: who approved what is part of the record.
+    if (out.decision.runId)
+      await transcribe(c, {
+        runId: out.decision.runId,
+        actor: auditActorOf(by),
+        kind: out.effect ? 'decision.resolved' : 'decision.vote',
+        source: 'api',
+        decisionId: out.decision.id,
+        payload: {
+          optionId: cmd.optionId,
+          ...(cmd.input ? { input: cmd.input } : {}),
+          by,
+          settled: Boolean(out.effect),
+          ...(out.effect ? { effect: out.effect } : {}),
+        },
+      });
     await publish(c, out.events, by);
     if (out.effect && out.decision.runId && c.p.executor) {
       await c.p.executor.onDecisionResolved({

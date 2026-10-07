@@ -9,12 +9,14 @@ import { VersionConflictError, type RunRecord } from '../ports/index.js';
 import {
   SYSTEM,
   audit,
+  auditActorOf,
   findPhase,
   loadRun,
   nowIso,
   phaseEvent,
   publish,
   runEvent,
+  transcribe,
   type Ctx,
 } from './context.js';
 import {
@@ -109,7 +111,27 @@ export class RunService {
       return { run, fresh: true };
     });
     // After the commit: the event log may use its own connection, and a rolled-back run must not announce itself.
-    if (created.fresh) await publish(c, [runEvent(created.run, 'run.created')], actor);
+    if (created.fresh) {
+      // What the person asked for is the first thing on the run's record.
+      await transcribe(c, {
+        runId: created.run.id,
+        actor: auditActorOf(actor),
+        kind: 'message.user',
+        source: 'api',
+        sourceEventId: `run.created:${created.run.id}`,
+        payload: {
+          input: created.run.input,
+          title: created.run.title,
+          pack: created.run.pack,
+          mode: created.run.mode,
+          orchestrator: created.run.orchestrator,
+          ...(created.run.projectId ? { projectId: created.run.projectId } : {}),
+          ...(created.run.workItem ? { workItem: created.run.workItem } : {}),
+          budget: created.run.budget.max,
+        },
+      });
+      await publish(c, [runEvent(created.run, 'run.created')], actor);
+    }
     return created.run;
   }
 

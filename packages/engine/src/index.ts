@@ -11,6 +11,7 @@ export * from './domain/roster.js';
 export * from './domain/agent-graph.js';
 export * from './domain/signals.js';
 export * from './domain/audit-chain.js';
+export * from './domain/redactor.js';
 export * from './ports/index.js';
 export * from './application/index.js';
 export * from './system.js';

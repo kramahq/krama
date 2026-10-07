@@ -66,8 +66,26 @@ export class OrchestratorMcp {
         t.name,
         { title: t.title, description: t.description, inputSchema: t.input },
         async (args: unknown) => {
+          const transcript = this.o.ports.transcript;
+          const actor = { type: 'orchestrator' as const, id: 'orchestrator' };
+          const started = Date.now();
+          // The call is on record before it runs, and its outcome before the orchestrator hears of it.
+          await transcript?.record({
+            runId: scope.runId,
+            actor,
+            kind: 'tool.call',
+            source: 'mcp',
+            payload: { tool: t.name, args },
+          });
           try {
             const result = await (t.run as (c: ToolCtx, a: unknown) => Promise<unknown>)(ctx, args);
+            await transcript?.record({
+              runId: scope.runId,
+              actor,
+              kind: 'tool.result',
+              source: 'mcp',
+              payload: { tool: t.name, ok: true, result, durationMs: Date.now() - started },
+            });
             return {
               content: [{ type: 'text' as const, text: JSON.stringify(result) }],
               structuredContent: result as Record<string, unknown>,
@@ -75,6 +93,13 @@ export class OrchestratorMcp {
           } catch (e) {
             const body = toToolError(e);
             if (body.code === 'internal') this.o.onError?.(e, t.name);
+            await transcript?.record({
+              runId: scope.runId,
+              actor,
+              kind: 'tool.result',
+              source: 'mcp',
+              payload: { tool: t.name, ok: false, error: body, durationMs: Date.now() - started },
+            });
             return {
               isError: true,
               content: [{ type: 'text' as const, text: JSON.stringify({ error: body }) }],

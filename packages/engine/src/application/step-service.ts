@@ -5,7 +5,8 @@ import { assertBackendAllowed, assertWithinBudget } from '../domain/invariants.j
 import type { AgentRef, GatewayEvent } from '../ports/index.js';
 import type { BudgetService } from './budget-service.js';
 import type { DecisionService } from './decision-service.js';
-import { findPhase, loadRun, nowIso, publish, runEvent, type Ctx } from './context.js';
+import { findPhase, loadRun, nowIso, publish, runEvent, transcribe, type Ctx } from './context.js';
+import { recordSignal, type IngestSubject } from './ingest-service.js';
 import { aggregateUsage } from '../domain/cost.js';
 import { MAX_TEXT, clip, sidebandActivity } from '../domain/signals.js';
 
@@ -127,6 +128,23 @@ export class StepService {
       };
       await tx.steps.put(s);
       return s;
+    });
+    // What the orchestrator asked of the agent goes on record before the agent is told.
+    c.p.transcript?.noteActivity(input.runId, input.agent.id);
+    await transcribe(c, {
+      runId: input.runId,
+      actor: { type: 'orchestrator', id: 'orchestrator' },
+      kind: 'message.delegation',
+      source: 'mcp',
+      sourceEventId: `step:${step.id}:task`,
+      phaseId: input.phaseId,
+      stepId: step.id,
+      payload: {
+        to: { id: input.agent.id, role: input.agent.role, backend: input.agent.backend },
+        text: input.text,
+        ...(input.summary ? { summary: input.summary } : {}),
+        ...(input.contextId ? { contextId: input.contextId } : {}),
+      },
     });
     await publish(
       c,
@@ -418,6 +436,21 @@ export class StepService {
               ? 'working'
               : e.state;
         k.setStatus(mapped);
+        await transcribe(c, {
+          runId: k.input.runId,
+          actor: { type: 'agent', id: k.step().agent.id, role: k.step().agent.role },
+          kind: 'step.state',
+          source: 'a2a-stream',
+          phaseId: k.input.phaseId,
+          stepId: k.step().id,
+          payload: {
+            state: e.state,
+            taskId: e.taskId,
+            ...(e.contextId ? { contextId: e.contextId } : {}),
+            ...(e.text !== undefined ? { text: e.text } : {}),
+            ...(e.request ? { request: e.request } : {}),
+          },
+        });
         await k.saveStep({ a2a, status: mapped });
         if (mapped === 'input_required' && e.text) k.setQuestion(e.text);
         if (mapped === 'input_required' && e.request)
@@ -430,6 +463,7 @@ export class StepService {
         break;
       }
       case 'sideband': {
+        await recordSignal(c, relaySubject(k), e);
         const a = sidebandActivity(e);
         await k.emit([k.activity(a.type, a.data)]);
         break;
@@ -450,6 +484,27 @@ export class StepService {
           bytes,
         });
         k.artifacts.push(art);
+        // The deliverable is on record with what it says (text and data in full) and where its bytes are kept.
+        await transcribe(c, {
+          runId: k.input.runId,
+          actor: { type: 'agent', id: k.step().agent.id, role: k.step().agent.role },
+          kind: 'artifact.created',
+          source: 'a2a-stream',
+          phaseId: k.input.phaseId,
+          stepId: k.step().id,
+          sourceEventId: `artifact:${art.id}`,
+          payload: {
+            artifactId: art.id,
+            name: art.name,
+            type: art.type,
+            mediaType: art.mediaType,
+            size: art.size,
+            sha256: art.sha256,
+            ...(/^(text\/|application\/(json|xml|yaml))/.test(art.mediaType)
+              ? { content: k.dec.decode(bytes) }
+              : {}),
+          },
+        });
         if (ANSWER_NAMES.has(e.name) && e.bytes) k.answer.push(k.dec.decode(e.bytes));
         await k.emit([
           {
@@ -469,6 +524,7 @@ export class StepService {
       }
       case 'usage': {
         k.usage.push(e.usage);
+        await recordSignal(c, relaySubject(k), e);
         await this.budget.record(
           {
             runId: k.input.runId,
@@ -490,6 +546,18 @@ export class StepService {
       }
     }
   }
+}
+
+/** Who reported, for a signal that reached the engine through a delegation Krama made itself. */
+function relaySubject(k: { step: () => Step; input: DelegateInput }): IngestSubject {
+  const s = k.step();
+  return {
+    runId: k.input.runId,
+    agent: { id: s.agent.id, role: s.agent.role, backend: s.agent.backend },
+    phaseId: k.input.phaseId,
+    stepId: s.id,
+    channel: 'a2a',
+  };
 }
 
 export { runEvent };

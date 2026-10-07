@@ -278,6 +278,8 @@ export async function specFor(
   const systemPrompt = [persona, extra.prompt, hints].filter(Boolean).join('\n\n');
   const hasOwnSubAgents = baseConfig !== undefined && 'subAgents' in baseConfig.json;
   const instanceId = env.events && id !== plan.orchestrator ? env.ports.ids.next('agt') : undefined;
+  if (env.events && instanceId)
+    env.ports.transcript?.expectSink(run.id, { id: instanceId, role: definition.role });
   const sink =
     env.events && instanceId
       ? {

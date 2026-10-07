@@ -45,6 +45,89 @@ describe.each(['1.0', '0.3'] as const)('against an A2A %s agent', (v) => {
     version = v;
   });
 
+  describe('the tap', () => {
+    const run = { runId: 'run_1', phaseId: 'draft', stepId: 'step_1' };
+    const taps = () => {
+      const seen: import('@kramahq/engine').GatewayTapEvent[] = [];
+      return { seen, tap: (e: import('@kramahq/engine').GatewayTapEvent) => void seen.push(e) };
+    };
+
+    it('sees the request and every frame, in order, as one call', async () => {
+      const s = (await fake()).queue({
+        frames: [
+          task('submitted'),
+          status('working'),
+          artifact('trace.mcp.start', [data({ toolName: 'git.diff' })]),
+          artifact('response', [text('patch applied')], {
+            id: 'r1',
+            append: false,
+            lastChunk: true,
+          }),
+          status('completed', { final: true }),
+        ],
+      });
+      const t = taps();
+      const gw = new A2AGateway({ tap: t.tap });
+      await collect(gw.send(ref(s), { text: 'please do the thing', correlation: run }));
+      expect(t.seen[0]).toMatchObject({
+        direction: 'out',
+        kind: 'request',
+        index: 0,
+        correlation: run,
+      });
+      expect(JSON.stringify(t.seen[0]!.body)).toContain('please do the thing');
+      const frames = t.seen.filter((e) => e.kind === 'frame');
+      expect(frames.length).toBeGreaterThanOrEqual(4);
+      expect(frames.every((e) => e.direction === 'in')).toBe(true);
+      expect(JSON.stringify(frames.map((f) => f.body))).toContain('git.diff');
+      expect(JSON.stringify(frames.map((f) => f.body))).toContain('patch applied');
+      expect(t.seen.map((e) => e.index)).toEqual(t.seen.map((_, i) => i));
+      expect(new Set(t.seen.map((e) => e.callId)).size).toBe(1);
+      // The call id is the A2A message id Krama sent.
+      expect(JSON.stringify(t.seen[0]!.body)).toContain(t.seen[0]!.callId);
+    });
+
+    it('gives each call its own id', async () => {
+      const s = (await fake()).queue(
+        { frames: [task('submitted'), status('completed', { final: true })] },
+        { frames: [task('submitted'), status('completed', { final: true })] },
+      );
+      const t = taps();
+      const gw = new A2AGateway({ tap: t.tap });
+      await collect(gw.send(ref(s), { text: 'one', correlation: run }));
+      await collect(gw.send(ref(s), { text: 'two', correlation: run }));
+      expect(new Set(t.seen.map((e) => e.callId)).size).toBe(2);
+    });
+
+    it('does not break a delegation when it throws', async () => {
+      const s = (await fake()).queue({
+        frames: [task('submitted'), status('completed', { final: true })],
+      });
+      const gw = new A2AGateway({
+        tap: () => {
+          throw new Error('tap is broken');
+        },
+      });
+      const evs = await collect(gw.send(ref(s), { text: 'go', correlation: run }));
+      expect(states(evs).at(-1)).toBe('completed');
+    });
+
+    it('sees a failure, with its code and without anything secret', async () => {
+      const t = taps();
+      const gw = new A2AGateway({ tap: t.tap, requestTimeoutMs: 2000 });
+      await expect(
+        collect(
+          gw.send(
+            { id: 'agt_x', url: 'http://127.0.0.1:1', role: 'dev', backend: 'a2a-fake' },
+            { text: 'go', correlation: run },
+          ),
+        ),
+      ).rejects.toBeInstanceOf(GatewayError);
+      // The card could not be read, so no request left: nothing was sent and nothing came back to record.
+      expect(t.seen.filter((e) => e.kind === 'request')).toEqual([]);
+    });
+  });
+
   describe('a normal delegation', () => {
     it('streams state, sideband, artifacts and usage, in order, and ends completed', async () => {
       const s = (await fake()).queue({

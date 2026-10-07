@@ -10,7 +10,12 @@ export * from './context.js';
 export { RunService, type RunPatch } from './run-service.js';
 export { DecisionService, type ResolveCommand } from './decision-service.js';
 export { BudgetService, type UsageReport } from './budget-service.js';
-export { IngestService, type IngestSubject } from './ingest-service.js';
+export {
+  IngestService,
+  recordSignal,
+  type IngestMeta,
+  type IngestSubject,
+} from './ingest-service.js';
 export { StepService, type DelegateInput, type DelegateResult } from './step-service.js';
 
 export interface Engine {
@@ -36,3 +41,5 @@ export function createEngine(ports: Ports, policy: Policy = {}): Engine {
   };
 }
 export * from './audit-writer.js';
+export * from './transcript-recorder.js';
+export * from './gateway-tap.js';

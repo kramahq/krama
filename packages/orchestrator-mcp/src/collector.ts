@@ -24,11 +24,16 @@ const hash = (t: string) => createHash('sha256').update(t).digest();
 /** Bearer tokens for the event sink. Like the MCP tokens: only hashes are kept, a token belongs to one run and is revoked with it. */
 export class EventTokens {
   private readonly byHash = new Map<string, EventClaims & { expiresAt: number }>();
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(
+    private readonly now: () => number = Date.now,
+    /** Told every token the moment it is made, so the platform can keep it out of anything it records. */
+    private readonly onIssue?: (token: string) => void,
+  ) {}
 
   issue(claims: EventClaims, ttlMs = 6 * 60 * 60_000): string {
     const token = `krm_evt_${randomBytes(32).toString('base64url')}`;
     this.byHash.set(hash(token).toString('hex'), { ...claims, expiresAt: this.now() + ttlMs });
+    this.onIssue?.(token);
     return token;
   }
 
@@ -125,6 +130,27 @@ export class AgentEventCollector {
       this.stats.parked++;
       this.parked.push({ eventType, agent: claims.agent, reason });
       if (this.parked.length > PARKED_KEPT) this.parked.shift();
+      // An event that cannot be attributed to a run is still on record, on the control chain, with what it said.
+      void this.o.ports.transcript
+        ?.recordControl({
+          actor: {
+            type: 'agent',
+            id: claims.instanceId,
+            instanceId: claims.instanceId,
+            role: claims.role,
+          },
+          kind: 'capture.gap',
+          source: 'http-sink',
+          ...(wire.eventId ? { sourceEventId: `evt:${wire.eventId}` } : {}),
+          payload: {
+            reason: 'unattributed',
+            why: reason,
+            agent: claims.agent,
+            claimedRun: claims.runId,
+            wire,
+          },
+        })
+        .catch(() => undefined);
       return 'parked';
     };
 
@@ -150,6 +176,12 @@ export class AgentEventCollector {
         channel: 'http',
       },
       signalsOfAgentEvent(wire),
+      {
+        ...(wire.eventId ? { eventId: wire.eventId } : {}),
+        ...(wire.timestamp ? { at: wire.timestamp } : {}),
+        ...(wire.traceId ? { traceId: wire.traceId } : {}),
+        wire,
+      },
     );
     this.stats.accepted++;
     return 'accepted';

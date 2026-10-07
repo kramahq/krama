@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline/promises';
 import { BackendRegistry } from '@kramahq/agents';
 import type { DelegationMode, EventEnvelope, Run, Usage } from '@kramahq/contract';
 import { aggregateUsage } from '@kramahq/engine';
-import { createKrama } from '../compose.js';
+import { createKrama, type Krama } from '../compose.js';
 import { DEMO_BACKEND, DEMO_DEFINITIONS, DEMO_PACK } from './pack.js';
 
 export interface DemoOptions {
@@ -19,6 +19,8 @@ export interface DemoOptions {
   out?: (line: string) => void;
   /** Give up after this long. */
   timeoutMs?: number;
+  /** Called when the run has settled and before the server closes, with the live server (tests read the transcript here). */
+  inspect?: (k: Krama, runId: string) => Promise<void>;
 }
 
 export interface DemoResult {
@@ -191,6 +193,7 @@ export async function runDemo(o: DemoOptions): Promise<DemoResult> {
       `  cost (USD):    ${final.budget.spent ? `$${final.budget.spent.amount}` : 'not reported'}`,
     );
     if (errors.length) out(`  errors:        ${errors.join('; ')}`);
+    await o.inspect?.(k, run.id);
     return {
       runId: run.id,
       status: final.status,
