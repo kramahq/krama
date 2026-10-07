@@ -1,5 +1,13 @@
+import { ROUTES } from '@kramahq/contract';
 import { describe, expect, it } from 'vitest';
-import { ApiError, connectEvents, createClient, frames, type StreamStatus } from '../src/index.js';
+import {
+  ApiError,
+  OPERATIONS,
+  connectEvents,
+  createClient,
+  frames,
+  type StreamStatus,
+} from '../src/index.js';
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -189,5 +197,96 @@ describe('the event stream', () => {
     await wait(() => calls >= 2);
     s.close();
     expect(statuses).toContain('reconnecting');
+  });
+});
+
+describe('generated operations', () => {
+  const recorder = () => {
+    const seen: { url: string; init: RequestInit }[] = [];
+    const c = createClient({
+      baseUrl: 'http://x/api/v1',
+      fetch: (async (url: string, init: RequestInit) => {
+        seen.push({ url, init });
+        return json(200, { id: 'run_1' });
+      }) as unknown as typeof fetch,
+    });
+    return { c, seen };
+  };
+  const header = (init: RequestInit, name: string) =>
+    (init.headers as Record<string, string>)[name];
+
+  it('fills and encodes path parameters and sends the query', async () => {
+    const { c, seen } = recorder();
+    await c.api.getRun({ params: { id: 'run/1' }, query: { expand: 'phases' } });
+    expect(seen[0]!.url).toBe('http://x/api/v1/runs/run%2F1?expand=phases');
+    expect(seen[0]!.init.method).toBe('GET');
+  });
+
+  it('adds an Idempotency-Key to creates, keeping one the caller gives', async () => {
+    const { c, seen } = recorder();
+    const body = { packId: 'pack_a', input: { text: 'hi' } };
+    await c.api.createRun({ body });
+    await c.api.createRun({ body, idempotencyKey: 'k-1' });
+    expect(header(seen[0]!.init, 'idempotency-key')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(header(seen[1]!.init, 'idempotency-key')).toBe('k-1');
+  });
+
+  it('sends If-Match, quoted, on operations that declare it', async () => {
+    const { c, seen } = recorder();
+    await c.api.patchRun({ params: { id: 'run_1' }, body: { title: 't' }, ifMatch: 3 });
+    expect(header(seen[0]!.init, 'if-match')).toBe('"3"');
+    expect(seen[0]!.init.method).toBe('PATCH');
+  });
+
+  it('refuses a missing path parameter without calling the server', async () => {
+    const { c, seen } = recorder();
+    await expect(c.api.getRun({ params: { id: '' } })).rejects.toThrow(TypeError);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('returns the raw response for byte routes and nothing for 204', async () => {
+    const c = createClient({
+      baseUrl: '/api/v1',
+      fetch: (async (url: string) =>
+        String(url).includes('/content')
+          ? new Response('bytes', { status: 200 })
+          : new Response(null, { status: 204 })) as unknown as typeof fetch,
+    });
+    const res = await c.api.getArtifactContent({ params: { id: 'art_1' } });
+    expect(await res.text()).toBe('bytes');
+    await expect(c.api.revokePermission({ params: { id: 'perm_1' } })).resolves.toBeUndefined();
+  });
+
+  it('has a method for every operation except the event streams', () => {
+    const c = createClient({ baseUrl: '/api/v1' });
+    for (const r of ROUTES) {
+      expect(typeof (c.api as Record<string, unknown>)[r.operationId] === 'function').toBe(
+        !r.stream,
+      );
+    }
+  });
+
+  it('matches the contract route table (method, path, status, headers)', () => {
+    expect(Object.keys(OPERATIONS).sort()).toEqual(ROUTES.map((r) => r.operationId).sort());
+    for (const r of ROUTES) {
+      expect(OPERATIONS[r.operationId as keyof typeof OPERATIONS]).toMatchObject({
+        method: r.method,
+        path: r.path,
+        idempotent: !!r.idempotent,
+        ifMatch: !!r.ifMatch,
+      });
+    }
+  });
+
+  it('is up to date with the contract (run `pnpm -F @kramahq/sdk generate`)', async () => {
+    const { render } = (await import('../scripts/generate.mjs')) as { render: () => string };
+    const { default: prettier } = await import('prettier');
+    const { readFileSync } = await import('node:fs');
+    const file = new URL('../src/generated/operations.ts', import.meta.url);
+    const formatted = await prettier.format(render(), {
+      ...(await prettier.resolveConfig(file.pathname)),
+      filepath: file.pathname,
+    });
+    expect(readFileSync(file, 'utf8')).toBe(formatted);
   });
 });

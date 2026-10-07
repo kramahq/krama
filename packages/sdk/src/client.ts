@@ -12,6 +12,15 @@ import type {
 } from '@kramahq/contract';
 import { ApiError } from './errors.js';
 import { connectEvents, type EventStream, type EventStreamOptions } from './events.js';
+import {
+  OPERATIONS,
+  fillPath,
+  type Api,
+  type CallArgs,
+  type CallFn,
+  type CallableId,
+  type OperationId,
+} from './operations.js';
 
 export interface Page<T> {
   items: T[];
@@ -80,7 +89,13 @@ export function createClient(o: ClientOptions) {
   async function request<T>(
     method: string,
     path: string,
-    opts: { query?: Query; body?: unknown; signal?: AbortSignal } = {},
+    opts: {
+      query?: Query;
+      body?: unknown;
+      signal?: AbortSignal;
+      headers?: Record<string, string>;
+      raw?: boolean;
+    } = {},
   ): Promise<T> {
     let res: Response;
     try {
@@ -90,6 +105,7 @@ export function createClient(o: ClientOptions) {
           accept: 'application/json',
           ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
           ...authHeaders(),
+          ...(opts.headers ?? {}),
         },
         ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
         ...(opts.signal ? { signal: opts.signal } : {}),
@@ -98,6 +114,7 @@ export function createClient(o: ClientOptions) {
       if ((e as Error).name === 'AbortError') throw e;
       throw new ApiError(`Cannot reach the Krama server at ${base}`, 0);
     }
+    if (opts.raw && res.ok) return res as T;
     if (res.status === 204) return undefined as T;
     const text = await res.text();
     let body: unknown;
@@ -122,7 +139,44 @@ export function createClient(o: ClientOptions) {
   const post = <T>(path: string, body?: unknown) =>
     request<T>('POST', path, body === undefined ? {} : { body });
 
+  /** Calls any operation of the contract by its `operationId`, typed from the route table. */
+  const call = (async (id: CallableId, args: CallArgs<CallableId> = {} as CallArgs<CallableId>) => {
+    const op = OPERATIONS[id];
+    const a = args as {
+      params?: Record<string, string>;
+      query?: Query;
+      body?: unknown;
+      ifMatch?: string | number;
+      idempotencyKey?: string;
+      signal?: AbortSignal;
+    };
+    const headers: Record<string, string> = {};
+    if (op.idempotent) headers['idempotency-key'] = a.idempotencyKey ?? crypto.randomUUID();
+    if (op.ifMatch && a.ifMatch !== undefined) {
+      const v = String(a.ifMatch);
+      headers['if-match'] = v.startsWith('"') ? v : `"${v}"`;
+    }
+    return request<unknown>(op.method, fillPath(op.path, a.params), {
+      ...(a.query ? { query: a.query } : {}),
+      ...(a.body !== undefined ? { body: a.body } : {}),
+      ...(a.signal ? { signal: a.signal } : {}),
+      headers,
+      raw: op.kind === 'raw',
+    });
+  }) as CallFn;
+  const api = Object.fromEntries(
+    (Object.keys(OPERATIONS) as OperationId[])
+      .filter((id) => OPERATIONS[id].kind !== 'stream')
+      .map((id) => [
+        id,
+        (args?: CallArgs<CallableId>) => (call as (i: string, a?: unknown) => unknown)(id, args),
+      ]),
+  ) as unknown as Api;
+
   return {
+    call,
+    /** Every operation of the contract as a method, e.g. `client.api.getRun({ params: { id } })`. */
+    api,
     capabilities: () => get<Capabilities>('/capabilities'),
     me: () => get<Me>('/me'),
     health: () => get<{ status: string }>('/health'),
