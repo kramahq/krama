@@ -28,5 +28,8 @@
     "@kramahq/contract": "workspace:*",
     "fastify": "^5.12.5",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@kramahq/sdk": "workspace:*"
   }
 }

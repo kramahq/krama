@@ -139,6 +139,8 @@ const sendBytes = (req: Req, reply: FastifyReply, body: Buffer, mediaType: strin
 };
 
 export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<string, Handler> {
+  /** Runs created under an `Idempotency-Key`, so a repeat returns the first one. */
+  const idempotentRuns = new Map<string, Run>();
   const run = (id: string) => find(s.runs, id, 'Run');
   const filtered = <T>(
     items: T[],
@@ -220,6 +222,12 @@ export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<stri
     // Runs
     createRun: (req, reply) => {
       const b = req.body;
+      const key = req.headers['idempotency-key'];
+      const seen = typeof key === 'string' ? idempotentRuns.get(key) : undefined;
+      if (seen) {
+        reply.code(201);
+        return seen;
+      }
       const pack = find(s.packs, b.packId, 'Pack');
       const now = new Date().toISOString();
       const id = `run_${Date.now().toString(36).toUpperCase()}`;
@@ -275,6 +283,7 @@ export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<stri
       };
       if (autoProgress) setTimeout(start, 1200).unref();
       else start();
+      if (typeof key === 'string') idempotentRuns.set(key, r);
       reply.code(201);
       return r;
     },

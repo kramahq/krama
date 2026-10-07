@@ -24,9 +24,14 @@ export default tseslint.config(
   },
   {
     // A Node script that also runs a callback inside the browser it drives.
-    files: ['apps/ui/scripts/**/*.mjs', 'scripts/**/*.mjs'],
+    files: ['apps/ui/scripts/**/*.mjs', 'scripts/**/*.mjs', 'packages/*/scripts/**/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly', localStorage: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        localStorage: 'readonly',
+        URL: 'readonly',
+      },
     },
     rules: { 'no-empty': 'off' },
   },
