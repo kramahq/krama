@@ -7,7 +7,7 @@ import { StepService } from './step-service.js';
 import type { Ports } from '../ports/index.js';
 
 export * from './context.js';
-export { RunService } from './run-service.js';
+export { RunService, type RunPatch } from './run-service.js';
 export { DecisionService, type ResolveCommand } from './decision-service.js';
 export { BudgetService, type UsageReport } from './budget-service.js';
 export { IngestService, type IngestSubject } from './ingest-service.js';

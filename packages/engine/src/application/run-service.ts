@@ -5,7 +5,7 @@ import { evaluate } from '../domain/evaluator-loop.js';
 import { assertBackendAllowed, requiredGatesAfter } from '../domain/invariants.js';
 import { transitionPhase } from '../domain/phase-machine.js';
 import { transitionRun, type RunTrigger } from '../domain/run-machine.js';
-import type { RunRecord } from '../ports/index.js';
+import { VersionConflictError, type RunRecord } from '../ports/index.js';
 import {
   SYSTEM,
   audit,
@@ -24,6 +24,14 @@ import {
   downstream,
   startReadyPhases,
 } from './run-ops.js';
+
+/** The fields of a run a person can change (`PATCH /runs/{id}`). */
+export interface RunPatch {
+  title?: string;
+  labels?: string[];
+  mode?: Run['mode'];
+  budget?: { max: number };
+}
 
 const DEFAULT_MAX_LOOPS = 2;
 const DEFAULT_DELEGATION = 'native' as const;
@@ -137,6 +145,44 @@ export class RunService {
       rec.run.endedAt = nowIso(this.c);
       return [runEvent(rec.run, 'run.failed')];
     });
+  }
+
+  /**
+   * Changes what a person may change on a run: its title, labels, mode and budget cap. `expectedVersion` makes the
+   * change conditional on the version the caller last saw (`VersionConflictError` otherwise).
+   */
+  async update(
+    runId: string,
+    patch: RunPatch,
+    actor: ActorRef,
+    expectedVersion?: number,
+  ): Promise<{ run: Run; version: number }> {
+    const { c } = this;
+    const out = await c.p.store.transaction(async (tx) => {
+      const cur = await loadRun(tx, runId);
+      if (expectedVersion !== undefined && cur.version !== expectedVersion)
+        throw new VersionConflictError(runId, expectedVersion, cur.version);
+      const rec: RunRecord = structuredClone(cur.value);
+      const run = rec.run;
+      if (patch.title !== undefined) run.title = patch.title;
+      if (patch.labels !== undefined) run.labels = [...new Set(patch.labels)];
+      if (patch.mode !== undefined) run.mode = patch.mode;
+      if (patch.budget) {
+        run.budget.max = { amount: patch.budget.max, currency: 'USD' };
+        rec.warned = false; // the warning fires again against the new cap
+      }
+      run.updatedAt = nowIso(c);
+      const saved = await tx.runs.put(rec, cur.version);
+      const changed = Object.keys(patch).filter((k) => patch[k as keyof RunPatch] !== undefined);
+      await audit(c, tx, actor, 'run.updated', { type: 'run', id: runId }, { changed });
+      return {
+        run: saved.value.run,
+        version: saved.version,
+        event: runEvent(run, 'run.updated', { changed }),
+      };
+    });
+    await publish(c, [out.event], actor);
+    return { run: out.run, version: out.version };
   }
 
   pause(runId: string, actor: ActorRef): Promise<Run> {
