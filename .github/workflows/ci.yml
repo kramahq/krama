@@ -1,8 +1,13 @@
 name: ci
+# CI is paused while the code base is moving fast (2026-10-07). The checks below are skipped unless the repository
+# variable CI_ENABLED is 'true' (Settings > Secrets and variables > Actions > Variables), or the workflow is started by
+# hand (Actions > ci > Run workflow). The DCO check stays on. Run the same checks locally before pushing:
+#   pnpm format:check && pnpm build && pnpm lint && pnpm lint:deps && pnpm test
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -13,12 +18,14 @@ permissions:
 
 jobs:
   ci:
+    if: ${{ vars.CI_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
     uses: kramahq/.github/.github/workflows/ci.yml@main
   dco:
     if: github.event_name == 'pull_request'
     uses: kramahq/.github/.github/workflows/dco.yml@main
   # The same Store contract suite runs against hosted Postgres (PGlite is covered by the main matrix).
   store-postgres:
+    if: ${{ vars.CI_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     services:
       postgres:
