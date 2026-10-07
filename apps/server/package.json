@@ -19,18 +19,23 @@
     "build": "tsc -b",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint .",
-    "demo": "node dist/demo/run.js"
+    "demo": "node dist/demo/run.js",
+    "start": "node dist/main.js"
   },
   "bin": {
-    "krama-demo": "./dist/demo/run.js"
+    "krama-demo": "./dist/demo/run.js",
+    "krama-server": "./dist/main.js"
   },
   "dependencies": {
+    "@fastify/cors": "^11.3.0",
     "@kramahq/agents": "workspace:*",
     "@kramahq/artifacts-fs": "workspace:*",
     "@kramahq/contract": "workspace:*",
     "@kramahq/engine": "workspace:*",
     "@kramahq/orchestrator-mcp": "workspace:*",
     "@kramahq/store": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.32.0"
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "fastify": "^5.12.5",
+    "zod": "^4.6.5"
   }
 }
