@@ -1,15 +1,29 @@
-import type { AgentGateway, AgentRef, GatewayEvent, SendMessage } from '@kramahq/engine';
+import { AgentCard, CancelTaskRequest, SendMessageRequest } from '@a2a-js/sdk';
 import {
-  ArtifactAssembler,
-  decodeEvent,
-  isTerminal,
-  sseResults,
-  type DecodeState,
-} from './codec.js';
+  ClientFactory,
+  DefaultAgentCardResolver,
+  JsonRpcTransportFactory,
+  RestTransportFactory,
+  type Client,
+} from '@a2a-js/sdk/client';
+import type { AgentGateway, AgentRef, GatewayEvent, SendMessage } from '@kramahq/engine';
+import { reportCard, type CardReport } from './card-report.js';
+import { ArtifactAssembler, decodeEvent, isTerminal, type DecodeState } from './codec.js';
+import {
+  EXTERNAL_EGRESS,
+  EgressError,
+  MANAGED_EGRESS,
+  createSafeFetch,
+  redact,
+  type EgressPolicy,
+} from './egress.js';
+import { dropMalformedSseFrames } from './sse.js';
+import { streamToWire } from './wire.js';
 
 export class GatewayError extends Error {
   constructor(
-    readonly code: 'unreachable' | 'http_error' | 'rpc_error' | 'bad_response',
+    readonly code:
+      'unreachable' | 'http_error' | 'rpc_error' | 'bad_response' | 'blocked' | 'too_large',
     message: string,
     readonly detail?: unknown,
   ) {
@@ -19,23 +33,27 @@ export class GatewayError extends Error {
 }
 
 export interface GatewayOptions {
-  fetch?: typeof fetch;
   /** Total time one delegation may take. Long media jobs pass a larger `timeoutMs` per call. Default 30 min. */
   defaultTimeoutMs?: number;
   /** Abort when the agent goes silent this long (any event resets it). Default 15 min. */
   inactivityMs?: number;
-  /** Path of the JSON-RPC endpoint. Wrappers mount it at `/a2a/jsonrpc`. */
-  jsonRpcPath?: string;
+  /** Outbound policy for agents Krama started (loopback allowed). */
+  managed?: Partial<EgressPolicy>;
+  /** Outbound policy for `external` agents (public addresses only, no redirects, size-capped). */
+  external?: Partial<EgressPolicy>;
+  /**
+   * Request headers per destination origin, for example `{ 'https://agent.example.com': { authorization: 'Bearer …' } }`.
+   * Sent only to that origin, and removed from any error text.
+   */
+  credentials?: Record<string, Record<string, string>>;
+  /** How long a fetched agent card is trusted before it is read again. Default 5 min. */
+  cardTtlMs?: number;
+  /** Budget for the calls that are not a delegation: reading a card, cancelling. Default 10 s. */
+  requestTimeoutMs?: number;
 }
 
-let rpcId = 0;
-const newMessageId = () =>
-  `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const newMessageId = () => crypto.randomUUID();
 
-/**
- * `AgentGateway` over A2A JSON-RPC (`message/stream`, falling back to `message/send`). Speaks the 0.3 method
- * names, which every wrapper still serves next to 1.0 (decision D8; the 1.0 binding is W7 behind this class).
- */
 /**
  * The caller's correlation context in the wrapper's own names (`trace_id`, `parent_agent_id`, `propagated_metadata`), so an
  * agent can stamp it on its events and pass it on to the agents it calls. An agent that ignores it is unaffected.
@@ -55,11 +73,97 @@ export function correlationMetadata(
 }
 
 export class A2AGateway implements AgentGateway {
-  private readonly doFetch: typeof fetch;
-  private readonly path: string;
+  private readonly clients = new Map<string, { client: Client; card: AgentCard; at: number }>();
+  private readonly secrets: string[];
+
   constructor(private readonly o: GatewayOptions = {}) {
-    this.doFetch = o.fetch ?? fetch;
-    this.path = o.jsonRpcPath ?? '/a2a/jsonrpc';
+    this.secrets = Object.values(o.credentials ?? {}).flatMap((h) => Object.values(h));
+  }
+
+  private policy(agent: AgentRef): EgressPolicy {
+    return agent.external
+      ? { ...EXTERNAL_EGRESS, ...this.o.external }
+      : { ...MANAGED_EGRESS, ...this.o.managed };
+  }
+
+  private credentialsFor = (origin: string) => this.o.credentials?.[origin];
+
+  /** The SDK client for an agent, built from its card (`supportedInterfaces`) and cached for a while. */
+  private async clientFor(agent: AgentRef): Promise<{ client: Client; card: AgentCard }> {
+    const key = `${agent.external ? 'x' : 'm'}|${agent.url}`;
+    const hit = this.clients.get(key);
+    if (hit && Date.now() - hit.at < (this.o.cardTtlMs ?? 5 * 60_000)) return hit;
+
+    const policy = this.policy(agent);
+    const fetchImpl = this.guardedFetch(
+      createSafeFetch({ policy, credentialsFor: this.credentialsFor }),
+    );
+    const resolver = new DefaultAgentCardResolver({ fetchImpl, legacyCompat: { enabled: true } });
+    const factory = new ClientFactory({
+      transports: [
+        new JsonRpcTransportFactory({ fetchImpl, legacyCompat: { enabled: true } }),
+        new RestTransportFactory({ fetchImpl, legacyCompat: { enabled: true } }),
+      ],
+      preferredTransports: ['JSONRPC', 'HTTP+JSON'],
+      cardResolver: resolver,
+    });
+    let card: AgentCard;
+    try {
+      const timeout = AbortSignal.timeout(this.o.requestTimeoutMs ?? 10_000);
+      card = await withSignal(resolver.resolve(agent.url), timeout);
+    } catch (e) {
+      throw this.fail(e, agent, 'reading the agent card');
+    }
+    // A card may not send traffic (and credentials) to a host other than the one it was fetched from, unless that host
+    // is on the allow-list. gRPC is not used.
+    const origin = new URL(agent.url).origin;
+    const allowed = new Set([origin, ...(policy.allowedOrigins ?? [])]);
+    const usable = card.supportedInterfaces.filter(
+      (i) => i.protocolBinding.toUpperCase() !== 'GRPC' && allowed.has(safeOrigin(i.url)),
+    );
+    if (!usable.length)
+      throw new GatewayError(
+        'bad_response',
+        `${agent.role} advertises no JSON-RPC or HTTP+JSON interface on ${origin}`,
+      );
+    card = { ...card, supportedInterfaces: usable };
+    let client: Client;
+    try {
+      client = await factory.createFromAgentCard(card);
+    } catch (e) {
+      throw this.fail(e, agent, 'preparing the client');
+    }
+    const entry = { client, card, at: Date.now() };
+    this.clients.set(key, entry);
+    return entry;
+  }
+
+  /** Network failures from the safe fetch become typed errors before the SDK can wrap them. */
+  private guardedFetch(inner: typeof fetch): typeof fetch {
+    return async (input, init) => {
+      try {
+        const res = await inner(input, init);
+        return (res.headers.get('content-type') ?? '').includes('text/event-stream') && res.body
+          ? new Response(res.body.pipeThrough(dropMalformedSseFrames()), {
+              status: res.status,
+              headers: res.headers,
+            })
+          : res;
+      } catch (e) {
+        if (init?.signal?.aborted) throw e;
+        // undici wraps an error thrown while connecting (a refused address) as `fetch failed` with the cause attached.
+        for (let c: unknown = e, n = 0; c && n < 6; c = (c as { cause?: unknown }).cause, n++)
+          if (c instanceof EgressError) throw c;
+        throw new GatewayError('unreachable', (e as Error).message, { cause: e });
+      }
+    };
+  }
+
+  /** Describes an agent's card: what it advertises, which interface is used, what would get in the way. Advisory. */
+  async inspect(agent: AgentRef): Promise<CardReport> {
+    const { card, client } = await this.clientFor(agent);
+    const url = (client.transport as unknown as { endpoint?: string }).endpoint;
+    return reportCard(card, url);
   }
 
   async *send(agent: AgentRef, message: SendMessage): AsyncGenerator<GatewayEvent> {
@@ -82,65 +186,33 @@ export class A2AGateway implements AgentGateway {
     if (message.signal?.aborted) abort('caller');
 
     const st: DecodeState = { assembler: new ArtifactAssembler() };
-    const params = {
-      message: {
-        messageId: newMessageId(),
-        role: 'user',
-        parts: [{ kind: 'text', text: message.text }],
-        ...(message.contextId ? { contextId: message.contextId } : {}),
-        ...(message.correlation ? { metadata: correlationMetadata(message.correlation) } : {}),
-      },
-      // Older wrappers read the context from here; harmless for the rest.
-      configuration: { ...(message.contextId ? { contextId: message.contextId } : {}) },
-    };
-    let rpcError: { code?: number; message: string } | undefined;
     let sawTerminal = false;
     try {
-      let res: Response;
+      const { client } = await this.clientFor(agent);
+      const request = SendMessageRequest.fromJSON({
+        message: {
+          messageId: newMessageId(),
+          role: 'ROLE_USER',
+          parts: [{ text: message.text, mediaType: 'text/plain' }],
+          ...(message.contextId ? { contextId: message.contextId } : {}),
+          ...(message.correlation ? { metadata: correlationMetadata(message.correlation) } : {}),
+        },
+        configuration: { returnImmediately: false },
+      });
       try {
-        res = await this.post(agent, 'message/stream', params, ctl.signal, true);
-      } catch (e) {
-        if (ctl.signal.aborted) throw e;
-        throw new GatewayError(
-          'unreachable',
-          `Cannot reach ${agent.role} at ${agent.url}: ${(e as Error).message}`,
-        );
-      }
-      if (!res.ok)
-        throw new GatewayError(
-          'http_error',
-          `${agent.role} answered HTTP ${res.status}`,
-          await res.text().catch(() => ''),
-        );
-
-      if ((res.headers.get('content-type') ?? '').includes('text/event-stream') && res.body) {
-        for await (const ev of sseResults(res.body, (e) => (rpcError = e))) {
+        for await (const sr of client.sendMessageStream(request, { signal: ctl.signal })) {
           bump();
-          for (const g of decodeEvent(ev, st)) {
+          const wire = streamToWire(sr);
+          if (!wire) continue;
+          for (const g of decodeEvent(wire, st)) {
             if (g.kind === 'state' && isTerminal(g.state)) sawTerminal = true;
             yield g;
           }
         }
-      } else {
-        // The agent answered with plain JSON (no streaming): treat the body as a final task or message.
-        const body = (await res.json().catch(() => undefined)) as
-          Record<string, unknown> | undefined;
-        const err = body?.error as { code?: number; message?: string } | undefined;
-        if (err)
-          rpcError = {
-            ...(err.code !== undefined ? { code: err.code } : {}),
-            message: err.message ?? 'A2A error',
-          };
-        else if (body?.result && typeof body.result === 'object') {
-          for (const g of decodeEvent(body.result as Record<string, unknown>, st)) {
-            if (g.kind === 'state' && isTerminal(g.state)) sawTerminal = true;
-            yield g;
-          }
-        } else
-          throw new GatewayError('bad_response', `${agent.role} returned an unreadable response`);
+      } catch (e) {
+        if (ctl.signal.aborted) throw e;
+        throw this.fail(e, agent, 'the delegation');
       }
-      if (rpcError)
-        throw new GatewayError('rpc_error', `${agent.role}: ${rpcError.message}`, rpcError);
       for (const g of st.assembler.flush()) yield g;
       if (!sawTerminal && st.lastState !== 'input_required' && st.taskId) {
         yield {
@@ -179,31 +251,82 @@ export class A2AGateway implements AgentGateway {
   }
 
   async cancel(agent: AgentRef, taskId: string): Promise<void> {
-    const res = await this.post(
-      agent,
-      'tasks/cancel',
-      { id: taskId },
-      AbortSignal.timeout(10_000),
-      false,
-    );
-    await res.text().catch(() => undefined);
+    const { client } = await this.clientFor(agent);
+    try {
+      await client.cancelTask(CancelTaskRequest.fromJSON({ id: taskId }), {
+        signal: AbortSignal.timeout(this.o.requestTimeoutMs ?? 10_000),
+      });
+    } catch (e) {
+      throw this.fail(e, agent, 'cancelling the task');
+    }
   }
 
-  private post(
-    agent: AgentRef,
-    method: string,
-    params: unknown,
-    signal: AbortSignal,
-    sse: boolean,
-  ): Promise<Response> {
-    return this.doFetch(`${agent.url}${this.path}`, {
-      method: 'POST',
-      signal,
-      headers: {
-        'content-type': 'application/json',
-        ...(sse ? { accept: 'text/event-stream' } : {}),
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method, params }),
-    });
+  /** Turns whatever the SDK or the network threw into a `GatewayError`, with secrets removed from the text. */
+  private fail(e: unknown, agent: AgentRef, doing: string): GatewayError {
+    const chain: unknown[] = [];
+    for (let c = e; c && chain.length < 6; c = (c as { cause?: unknown }).cause) chain.push(c);
+    const clean = (t: string) => redact(t, this.secrets);
+    const gw = chain.find((c): c is GatewayError => c instanceof GatewayError);
+    if (gw && gw.code === 'unreachable')
+      return new GatewayError(
+        'unreachable',
+        clean(`Cannot reach ${agent.role} at ${agent.url}: ${gw.message}`),
+      );
+    if (gw) return gw;
+    const eg = chain.find((c): c is EgressError => c instanceof EgressError);
+    if (eg)
+      return new GatewayError(
+        eg.code === 'too_large' ? 'too_large' : 'blocked',
+        clean(`${agent.role}: ${eg.message}`),
+        { reason: eg.code },
+      );
+    const msg = e instanceof Error ? e.message : String(e);
+    const http = /HTTP error[^:]*: (\d{3})/.exec(msg) ?? /Status: (\d{3})/.exec(msg);
+    if (http)
+      return new GatewayError(
+        'http_error',
+        clean(`${agent.role} answered HTTP ${http[1]}`),
+        clean(msg),
+      );
+    const inStream = /\(Code: (-?\d+)\)/.exec(msg);
+    if (inStream)
+      return new GatewayError('rpc_error', clean(`${agent.role}: ${msg}`), {
+        code: Number(inStream[1]),
+        message: clean(msg),
+      });
+    const rpc = e as { code?: unknown; name?: string };
+    if (typeof rpc.code === 'number' || /A2A|JsonRpc|Rest.*Error/.test(rpc.name ?? ''))
+      return new GatewayError(
+        'rpc_error',
+        clean(`${agent.role}: ${msg}`),
+        typeof rpc.code === 'number' ? { code: rpc.code, message: clean(msg) } : undefined,
+      );
+    if (/fetch failed|ECONN|ENOTFOUND|EAI_AGAIN|socket|terminated|network/i.test(msg))
+      return new GatewayError(
+        'unreachable',
+        clean(`Cannot reach ${agent.role} at ${agent.url}: ${msg}`),
+      );
+    return new GatewayError(
+      'bad_response',
+      clean(`${agent.role} returned an unreadable response during ${doing}: ${msg}`),
+    );
   }
+}
+
+const safeOrigin = (u: string): string => {
+  try {
+    return new URL(u).origin;
+  } catch {
+    return '';
+  }
+};
+
+/** Rejects when `signal` aborts, so a slow card read cannot outlive its budget. */
+function withSignal<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const on = () => reject(signal.reason);
+    signal.addEventListener('abort', on, { once: true });
+    p.then(resolve, reject).finally(() => signal.removeEventListener('abort', on));
+  });
 }

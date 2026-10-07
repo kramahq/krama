@@ -11,4 +11,6 @@ export * from './runtime/ledger.js';
 export * from './runtime/runtime.js';
 export * from './gateway/codec.js';
 export * from './gateway/a2a-gateway.js';
+export * from './gateway/egress.js';
+export * from './gateway/card-report.js';
 export * from './definitions.js';
