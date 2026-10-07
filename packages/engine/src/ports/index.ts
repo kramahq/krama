@@ -248,6 +248,8 @@ export interface AgentRef {
   url: string;
   role: string;
   backend: string;
+  /** An agent Krama did not start (a roster entry by card URL). Reached with the stricter outbound policy. */
+  external?: boolean;
 }
 
 export type TaskState =

@@ -53,6 +53,8 @@ export class ArtifactAssembler {
     const a = obj(event.artifact);
     if (!a) return [];
     const id = str(a.artifactId) ?? str(a.name) ?? 'artifact';
+    // A fresh (non-append) chunk for an id still being assembled closes the earlier one instead of overwriting it.
+    const earlier = event.append === true ? [] : this.flush(id);
     const cur = event.append === true ? this.bufs.get(id) : undefined;
     const buf = cur ?? { name: str(a.name) ?? id, text: [], data: [], files: [] };
     for (const p of Array.isArray(a.parts) ? a.parts : []) {
@@ -69,7 +71,7 @@ export class ArtifactAssembler {
       }
     }
     this.bufs.set(id, buf);
-    return event.lastChunk === false ? [] : this.flush(id);
+    return [...earlier, ...(event.lastChunk === false ? [] : this.flush(id))];
   }
 
   flush(id?: string): GatewayEvent[] {

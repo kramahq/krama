@@ -86,7 +86,7 @@ function reviewer(): Reply {
 }
 
 const textOf = (result: Json | undefined): string => {
-  const artifacts = (result?.artifacts ?? []) as Json[];
+  const artifacts = ((result?.task as Json | undefined)?.artifacts ?? []) as Json[];
   return artifacts
     .flatMap((a) => (a.parts ?? []) as Json[])
     .map((p) => String(p.text ?? ''))
@@ -98,13 +98,17 @@ async function callWorker(agentCardUrl: string, text: string): Promise<string> {
   const base = new URL(agentCardUrl).origin;
   const res = await fetch(`${base}/a2a/jsonrpc`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'a2a-version': '1.0' },
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
-      method: 'message/send',
+      method: 'SendMessage',
       params: {
-        message: { messageId: `m_${Date.now()}`, role: 'user', parts: [{ kind: 'text', text }] },
+        message: {
+          messageId: `m_${Date.now()}`,
+          role: 'ROLE_USER',
+          parts: [{ text, mediaType: 'text/plain' }],
+        },
       },
     }),
   });
@@ -232,17 +236,30 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (req.method === 'GET' && req.url === '/.well-known/agent-card.json')
     return json(200, {
       name: agentName,
-      protocolVersion: '0.3.0',
-      url: `http://${host}:${port}/a2a/jsonrpc`,
-      skills: [{ id: 'work', name: agentName, description: `Does the ${script} job` }],
+      description: `Scripted ${script} agent for the demo`,
+      version: '1.0.0',
+      capabilities: { streaming: true },
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      skills: [{ id: 'work', name: agentName, description: `Does the ${script} job`, tags: [] }],
+      supportedInterfaces: [
+        {
+          url: `http://${host}:${port}/a2a/jsonrpc`,
+          protocolBinding: 'JSONRPC',
+          protocolVersion: '1.0',
+          tenant: '',
+        },
+      ],
     });
   if (req.method !== 'POST' || req.url !== '/a2a/jsonrpc') return json(404, { error: 'not found' });
 
   const body = JSON.parse(await read(req)) as { id: unknown; method: string; params?: Json };
-  if (body.method === 'tasks/cancel')
+  if (body.method === 'CancelTask')
     return json(
       200,
-      JSON.parse(rpc(body.id, { id: (body.params as Json).id, status: { state: 'canceled' } })),
+      JSON.parse(
+        rpc(body.id, { id: (body.params as Json).id, status: { state: 'TASK_STATE_CANCELED' } }),
+      ),
     );
 
   const message = (body.params?.message ?? {}) as Json;
@@ -252,27 +269,30 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const artifact = (t: string) => ({
     artifactId: `${taskId}_out`,
     name: 'response',
-    parts: [{ kind: 'text', text: t }],
+    parts: [{ text: t, mediaType: 'text/plain' }],
   });
-  const streaming = body.method !== 'message/send';
+  const streaming = body.method !== 'SendMessage';
   const frame = (r: unknown) => res.write(`data: ${rpc(body.id, r)}\n\n`);
   if (streaming) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
-    frame({ kind: 'status-update', taskId, contextId, status: { state: 'working' }, final: false });
+    frame({
+      statusUpdate: { taskId, contextId, status: { state: 'TASK_STATE_WORKING' } },
+    });
   }
   // Tool calls become `trace.mcp.start` sideband artifacts, the way a real wrapper reports them.
   const trace: Trace = (tool) => {
     if (!streaming) return;
     frame({
-      kind: 'artifact-update',
-      taskId,
-      contextId,
-      artifact: {
-        artifactId: `${taskId}_trace_${Math.random().toString(36).slice(2, 6)}`,
-        name: 'trace.mcp.start',
-        parts: [{ kind: 'data', data: { toolName: tool } }],
+      artifactUpdate: {
+        taskId,
+        contextId,
+        artifact: {
+          artifactId: `${taskId}_trace_${Math.random().toString(36).slice(2, 6)}`,
+          name: 'trace.mcp.start',
+          parts: [{ data: { toolName: tool }, mediaType: 'application/json' }],
+        },
+        lastChunk: true,
       },
-      lastChunk: true,
     });
   };
   let out: Reply;
@@ -280,14 +300,18 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     out = await reply(text, trace);
   } catch (e) {
     const status = {
-      state: 'failed',
-      message: { role: 'agent', parts: [{ kind: 'text', text: (e as Error).message }] },
+      state: 'TASK_STATE_FAILED',
+      message: {
+        messageId: `${taskId}_err`,
+        role: 'ROLE_AGENT',
+        parts: [{ text: (e as Error).message, mediaType: 'text/plain' }],
+      },
     };
     if (streaming) {
-      frame({ kind: 'status-update', taskId, contextId, status, final: true });
+      frame({ statusUpdate: { taskId, contextId, status } });
       return void res.end();
     }
-    return json(200, JSON.parse(rpc(body.id, { kind: 'task', id: taskId, contextId, status })));
+    return json(200, JSON.parse(rpc(body.id, { task: { id: taskId, contextId, status } })));
   }
 
   if (!streaming)
@@ -295,30 +319,27 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       200,
       JSON.parse(
         rpc(body.id, {
-          kind: 'task',
-          id: taskId,
-          contextId,
-          status: { state: 'completed' },
-          artifacts: [artifact(out.text)],
-          metadata: usage(out.tokens),
+          task: {
+            id: taskId,
+            contextId,
+            status: { state: 'TASK_STATE_COMPLETED' },
+            artifacts: [artifact(out.text)],
+            metadata: usage(out.tokens),
+          },
         }),
       ),
     );
 
   frame({
-    kind: 'artifact-update',
-    taskId,
-    contextId,
-    artifact: artifact(out.text),
-    lastChunk: true,
+    artifactUpdate: { taskId, contextId, artifact: artifact(out.text), lastChunk: true },
   });
   frame({
-    kind: 'status-update',
-    taskId,
-    contextId,
-    status: { state: 'completed' },
-    final: true,
-    metadata: usage(out.tokens),
+    statusUpdate: {
+      taskId,
+      contextId,
+      status: { state: 'TASK_STATE_COMPLETED' },
+      metadata: usage(out.tokens),
+    },
   });
   res.end();
 }
