@@ -6,7 +6,11 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type { Krama } from '../compose.js';
 import { TokenAuth, satisfies, type Principal } from './auth.js';
 import { isLoopback, type ServerConfig } from './config.js';
-import type { ApiContext, ApiReply, Handler, Handlers } from './context.js';
+import type { ApiContext, ApiReply, Handler, Handlers, StreamHandlers } from './context.js';
+import { STREAMED } from './context.js';
+import { eventStreams } from './events.js';
+import { OperationRegistry, operationHandlers } from './operations.js';
+import { TicketStore } from './tickets.js';
 import { etagOf, notModified, parseIfMatch, Versioned } from './helpers.js';
 import { IDEMPOTENCY_HEADER, IdempotencyStore } from './idempotency.js';
 import { Preferences, platformHandlers } from './platform.js';
@@ -20,6 +24,10 @@ export interface ApiOptions {
   /** Check every success body against its contract schema. On in tests, off in production. */
   validateResponses?: boolean;
   idempotency?: IdempotencyStore;
+  /** Idle event streams send a comment this often (ms). */
+  heartbeatMs?: number;
+  /** Most event streams open at once (default 100). */
+  maxStreams?: number;
   /** Reported as `engineVersion`; defaults to this package's version. */
   version?: string;
   logger?: boolean;
@@ -48,13 +56,23 @@ const hostOf = (header: string | undefined): string => {
  */
 export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
   const { krama, config } = o;
-  const ctx: ApiContext = { krama, config, version: o.version ?? packageVersion() };
+  const operations = new OperationRegistry(krama.ports.events, krama.ports.ids);
+  const ctx: ApiContext = { krama, config, version: o.version ?? packageVersion(), operations };
+  const tickets = new TicketStore();
+  const events = eventStreams({
+    tickets,
+    ...(o.heartbeatMs ? { heartbeatMs: o.heartbeatMs } : {}),
+    ...(o.maxStreams ? { maxStreams: o.maxStreams } : {}),
+  });
   const auth = new TokenAuth(config.token);
   const idem = o.idempotency ?? new IdempotencyStore();
   const handlers: Handlers = {
     ...platformHandlers(new Preferences(config.home)),
+    ...events.handlers,
+    ...operationHandlers(),
     ...(o.handlers ?? {}),
   };
+  const streams: StreamHandlers = events.streams;
   const loopbackOnly = isLoopback(config.host);
 
   const app = Fastify({
@@ -63,6 +81,10 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
     genReqId: () => `req_${randomUUID()}`,
     routerOptions: { ignoreTrailingSlash: true },
   });
+
+  // An open event stream is an in-flight request, and `onClose` waits for those, so streams are ended earlier, in
+  // `preClose`; otherwise closing the server would wait for them forever.
+  app.addHook('preClose', async () => events.closeAll());
 
   app.addHook('onRequest', async (req, reply) => {
     reply.header('x-request-id', req.id);
@@ -109,6 +131,15 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
     return principal;
   };
 
+  const ticketPrincipal = (ticket: string): Principal => {
+    const principal = tickets.consume(ticket);
+    if (!principal)
+      throw new ApiProblem('unauthenticated', 'The ticket is invalid, expired or already used', {
+        headers: { 'www-authenticate': 'Bearer' },
+      });
+    return principal;
+  };
+
   for (const r of ROUTES) registerRoute(app, r);
 
   function registerRoute(a: FastifyInstance, r: RouteDef) {
@@ -120,7 +151,12 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
       // Authentication runs before the body is parsed or validated, so an anonymous caller learns nothing.
       onRequest: async (req) => {
         if (r.perm === 'public') return;
-        const principal = authenticate(req);
+        // A browser stream cannot send the header, so a stream route also takes a single-use `?ticket=`.
+        const ticket =
+          r.stream && !req.headers.authorization
+            ? (req.query as { ticket?: string }).ticket
+            : undefined;
+        const principal = ticket !== undefined ? ticketPrincipal(ticket) : authenticate(req);
         if (!satisfies(principal, r.perm))
           throw new ApiProblem('forbidden', `This needs the ${r.perm} role`);
         (req as unknown as { principal: Principal }).principal = principal;
@@ -149,8 +185,48 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
         const ifMatch = r.ifMatch
           ? parseIfMatch(req.headers['if-match'] as string | undefined, true)
           : undefined;
+        const apiReq = {
+          params: req.params as Record<string, string>,
+          query,
+          body,
+          headers: req.headers,
+          principal,
+          ifMatch,
+          idempotencyKey: undefined,
+          requestId: req.id,
+          ctx,
+        };
+        if (r.stream) {
+          const streamHandler = streams[r.operationId];
+          if (!streamHandler)
+            throw new ApiProblem(
+              'not_implemented',
+              `${r.operationId} is not available on this server yet`,
+            );
+          const reply1 = reply as FastifyReply;
+          const out = await streamHandler(apiReq, {
+            req: req.raw,
+            hijack: () => {
+              reply1.hijack();
+              return reply1.raw;
+            },
+            headers: Object.fromEntries(
+              Object.entries(reply1.getHeaders()).map(([k, v]) => [k, String(v)]),
+            ),
+          });
+          if (out === STREAMED) return reply1;
+          if (o.validateResponses && r.response && out !== undefined) {
+            const check = r.response.safeParse(out);
+            if (!check.success)
+              throw new Error(
+                `${r.operationId} returned a body that breaks the contract: ` +
+                  check.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+              );
+          }
+          return reply1.code(200).send(out);
+        }
         const handler: Handler | undefined = handlers[r.operationId];
-        if (!handler || r.stream)
+        if (!handler)
           throw new ApiProblem(
             'not_implemented',
             `${r.operationId} is not available on this server yet`,

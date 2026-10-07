@@ -266,7 +266,9 @@ describe('conformance against the contract route table', () => {
 
   it('answers every route with a contract-shaped result: a success body or a problem, never a bare 5xx', async () => {
     for (const r of ROUTES) {
-      const res = await app.inject({ method: r.method, url: fill(r), headers: auth });
+      // A stream route never ends under `inject`; ask for its JSON page form, which is the same route and contract.
+      const headers = r.stream ? { ...auth, accept: 'application/json' } : auth;
+      const res = await app.inject({ method: r.method, url: fill(r), headers });
       if (res.statusCode >= 400) {
         expect(res.headers['content-type'], r.operationId).toContain('application/problem+json');
         expect([404, 422, 428, 501], `${r.operationId} -> ${res.statusCode}`).toContain(

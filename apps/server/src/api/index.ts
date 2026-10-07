@@ -14,3 +14,12 @@ export { IdempotencyStore } from './idempotency.js';
 export type { ApiContext, ApiRequest, ApiReply, Handler, Handlers } from './context.js';
 export * from './helpers.js';
 export { buildCapabilities, buildHealth } from './platform.js';
+export { TicketStore, TICKET_TTL_MS } from './tickets.js';
+export { OperationRegistry, type OperationContext } from './operations.js';
+export { eventStreams, parseTopics } from './events.js';
+export {
+  STREAMED,
+  type StreamContext,
+  type StreamHandler,
+  type StreamHandlers,
+} from './context.js';
