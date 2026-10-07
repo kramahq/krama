@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { FsArtifactStore } from '@kramahq/artifacts-fs';
+import { FsArtifactStore, FsAuditBlobs } from '@kramahq/artifacts-fs';
 import {
   A2AGateway,
   BackendRegistry,
@@ -46,6 +46,12 @@ export interface KramaOptions {
   resolveCommand?: RuntimeOptions['resolveCommand'];
   /** Sub-agent timings for `native` delegation. */
   subAgents?: SubAgentsOptions;
+  /**
+   * Where the audit record lives. `same` (default): in the main database. `separate`: in its own embedded database under
+   * `<home>/audit-db`, which keeps heavy audit writes from slowing the event log (measured in the M2.5 spike; it matters
+   * on PGlite, which runs one query at a time, and not on Postgres).
+   */
+  auditStorage?: 'same' | 'separate';
   onError?: (e: unknown, where: string) => void;
 }
 
@@ -83,6 +89,8 @@ class StaticPacks implements PackRepository {
 export async function createKrama(o: KramaOptions): Promise<Krama> {
   const backends = o.backends ?? BackendRegistry.withBuiltins();
   const db: OpenedStore = await openPglite(join(o.home, 'db'));
+  const auditDb: OpenedStore | undefined =
+    o.auditStorage === 'separate' ? await openPglite(join(o.home, 'audit-db')) : undefined;
   const clock = new SystemClock();
   const ids = new UlidIdGenerator();
   const secrets = new EnvSecretResolver();
@@ -110,6 +118,8 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     notifier: new NullNotifier(),
     secrets,
     memory: db.memory,
+    ledger: (auditDb ?? db).ledger,
+    auditBlobs: new FsAuditBlobs(join(o.home, 'audit-blobs')),
     gateway: new A2AGateway(),
     backends,
     agents: runtime,
@@ -167,6 +177,7 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
       await collector.close();
       await runtime.shutdown();
       await db.close();
+      await auditDb?.close();
     },
   };
 }

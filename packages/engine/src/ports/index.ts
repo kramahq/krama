@@ -1,4 +1,8 @@
 import type {
+  AuditBlobRef,
+  AuditDraft,
+  AuditRecord,
+  AuditVerifyResult,
   ActorRef,
   Agent,
   AgentDefinition,
@@ -193,6 +197,54 @@ export interface EventLog {
   subscribe(listener: (e: EventEnvelope) => void, topics?: string[]): () => void;
   /** Cursor of the newest event, or `undefined` when empty. */
   latestCursor(): Promise<string | undefined>;
+}
+
+// ---- Audit ledger ----------------------------------------------------------
+
+export interface AuditReadOptions {
+  /** Records strictly after this sequence number. */
+  afterSeq?: number;
+  limit?: number;
+  /** Time range on `at`, inclusive. */
+  from?: string;
+  to?: string;
+}
+
+export interface AuditHead {
+  seq: number;
+  hash: string;
+}
+
+export interface AuditVerifyOptions {
+  /** A head kept somewhere the table's writers cannot reach (an export manifest, the control chain). */
+  expectedHead?: AuditHead;
+  /** Also check that every blob a record points to exists and hashes to its name. */
+  blobs?: AuditBlobs;
+}
+
+/**
+ * The append-only, hash-chained record of what was said and done (ADR-0013). Appending is serialised per chain, so a
+ * chain has no gaps and no two records share a position. An append with a `sourceEventId` already in the chain writes
+ * nothing and returns the existing record, which is what makes a retried POST harmless. Nothing here updates or
+ * deletes a record; `verify` finds a record that someone changed or removed another way.
+ */
+export interface AuditLedger {
+  append(draft: AuditDraft): Promise<{ record: AuditRecord; duplicate: boolean }>;
+  /** Oldest first. */
+  read(chain: string, options?: AuditReadOptions): Promise<AuditRecord[]>;
+  head(chain: string): Promise<AuditHead | undefined>;
+  /** Chain names, optionally those that start with `prefix` (`run:`). */
+  chains(prefix?: string): Promise<string[]>;
+  verify(chain: string, options?: AuditVerifyOptions): Promise<AuditVerifyResult>;
+  /** Called after a record is stored (never before), for the live view. */
+  subscribe(listener: (r: AuditRecord) => void, chains?: string[]): () => void;
+}
+
+/** Content-addressed bodies too large to keep inline in a record. */
+export interface AuditBlobs {
+  put(bytes: Uint8Array, mediaType: string): Promise<AuditBlobRef>;
+  get(sha256: string): Promise<Uint8Array | undefined>;
+  has(sha256: string): Promise<boolean>;
 }
 
 // ---- Artifacts -------------------------------------------------------------
@@ -404,6 +456,9 @@ export interface Ports {
   notifier: Notifier;
   secrets: SecretResolver;
   memory?: MemoryStore;
+  /** The hash-chained audit record (M2.5); becomes required when capture is wired (M3.5). */
+  ledger?: AuditLedger;
+  auditBlobs?: AuditBlobs;
   gateway?: AgentGateway;
   executor?: RunExecutor;
   workItems?: readonly WorkItemSource[];

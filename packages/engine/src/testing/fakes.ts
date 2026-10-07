@@ -11,6 +11,7 @@ import type {
   AuditEntry,
 } from '@kramahq/contract';
 import type { DecisionRecord } from '../domain/decision.js';
+import { InMemoryAuditBlobs, InMemoryAuditLedger } from './audit-fakes.js';
 import {
   CursorGoneError,
   VersionConflictError,
@@ -671,6 +672,8 @@ export interface FakePorts extends Ports {
   memory: InMemoryMemoryStore;
   gateway: FakeAgentGateway;
   agents: FakeAgentRuntime;
+  ledger: InMemoryAuditLedger;
+  auditBlobs: InMemoryAuditBlobs;
 }
 
 /** A complete set of in-memory ports for tests, demos and the walking skeleton. */
@@ -688,6 +691,8 @@ export function createFakePorts(packs: Pack[] = []): FakePorts {
     secrets: new StaticSecretResolver(),
     executor: new RecordingExecutor(),
     memory: new InMemoryMemoryStore(),
+    ledger: new InMemoryAuditLedger(() => clock.now()),
+    auditBlobs: new InMemoryAuditBlobs(),
     gateway: new FakeAgentGateway(),
     agents: new FakeAgentRuntime(),
   };

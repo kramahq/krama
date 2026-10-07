@@ -37,7 +37,7 @@ export class ArtifactTooLargeError extends Error {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Windows can briefly refuse a rename (`EBUSY`/`EPERM`, antivirus, indexers): retry with backoff. */
-async function renameWithRetry(from: string, to: string): Promise<void> {
+export async function renameWithRetry(from: string, to: string): Promise<void> {
   for (let i = 0; ; i++) {
     try {
       await rename(from, to);

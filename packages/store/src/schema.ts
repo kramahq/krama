@@ -1,4 +1,13 @@
-import { bigserial, index, integer, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  bigserial,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 
 /**
  * One schema for PGlite (local) and Postgres (hosted). Entities are stored as `jsonb` documents
@@ -136,3 +145,36 @@ export const events = pgTable(
     index('events_subject_idx').on(t.subjectType, t.subjectId, t.seq),
   ],
 );
+
+/**
+ * The hash-chained audit record (ADR-0013). Append-only: triggers refuse UPDATE, DELETE and TRUNCATE (migration
+ * 0002). `record` is the whole record as canonical JSON text, not jsonb, so what is hashed is exactly what is stored
+ * (jsonb would reorder keys and rewrite numbers); the other columns are copies kept for filtering.
+ */
+export const auditRecords = pgTable(
+  'audit_records',
+  {
+    chain: text('chain').notNull(),
+    seq: integer('seq').notNull(),
+    id: text('id').notNull(),
+    at: text('at').notNull(),
+    kind: text('kind').notNull(),
+    actorId: text('actor_id').notNull(),
+    runId: text('run_id'),
+    sourceEventId: text('source_event_id'),
+    record: text('record').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.chain, t.seq] }),
+    uniqueIndex('audit_records_source_idx').on(t.chain, t.sourceEventId),
+    index('audit_records_at_idx').on(t.chain, t.at),
+    index('audit_records_kind_idx').on(t.kind, t.at),
+  ],
+);
+
+/** The latest position of each chain. It serialises writers (the row is locked while a record is appended) and is what `verify` compares the chain's end with. It only moves forward. */
+export const auditHeads = pgTable('audit_heads', {
+  chain: text('chain').primaryKey(),
+  seq: integer('seq').notNull(),
+  hash: text('hash').notNull(),
+});

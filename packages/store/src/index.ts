@@ -5,3 +5,4 @@ export { MIGRATIONS, type Migration } from './migrations.generated.js';
 export * from './repos.js';
 export { schema, type Db } from './db.js';
 export { PgEventLog, cursorOf, type PgEventLogOptions } from './events.js';
+export { PgAuditLedger, type PgAuditLedgerOptions } from './audit.js';

@@ -15,6 +15,13 @@
       "when": 1791027469738,
       "tag": "0001_events",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791393489603,
+      "tag": "0002_audit_ledger",
+      "breakpoints": true
     }
   ]
 }
