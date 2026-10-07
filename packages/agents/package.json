@@ -26,13 +26,17 @@
     "backend:docs": "node scripts/gen-backend-docs.ts"
   },
   "dependencies": {
+    "@a2a-js/sdk": "^1.3.0",
     "@kramahq/contract": "workspace:*",
     "@kramahq/engine": "workspace:*",
     "cross-spawn": "^7.0.6",
+    "undici": "^8.11.2",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/cross-spawn": "^6.0.6"
+    "@types/cross-spawn": "^6.0.6",
+    "@types/express": "^5.0.6",
+    "express": "^5.2.1"
   }
 }
