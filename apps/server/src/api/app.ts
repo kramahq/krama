@@ -14,6 +14,11 @@ import { TicketStore } from './tickets.js';
 import { etagOf, notModified, parseIfMatch, Versioned } from './helpers.js';
 import { IDEMPOTENCY_HEADER, IdempotencyStore } from './idempotency.js';
 import { Preferences, platformHandlers } from './platform.js';
+import { RawBody } from './raw.js';
+import { workHandlers } from './work.js';
+import { workspaceHandlers } from './workspaces.js';
+import { artifactHandlers } from './artifacts.js';
+import { catalogHandlers } from './catalog.js';
 import { ApiProblem, toProblem, validationProblem } from './problems.js';
 
 export interface ApiOptions {
@@ -24,6 +29,11 @@ export interface ApiOptions {
   /** Check every success body against its contract schema. On in tests, off in production. */
   validateResponses?: boolean;
   idempotency?: IdempotencyStore;
+  /**
+   * Whether a newly created run is handed to the orchestrator at once (default). Off, a run stays in `planning` until
+   * something else starts it, which is what route tests want.
+   */
+  autoStartRuns?: boolean;
   /** Idle event streams send a comment this often (ms). */
   heartbeatMs?: number;
   /** Most event streams open at once (default 100). */
@@ -70,6 +80,10 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
     ...platformHandlers(new Preferences(config.home)),
     ...events.handlers,
     ...operationHandlers(),
+    ...workHandlers({ autoStart: o.autoStartRuns ?? true }),
+    ...workspaceHandlers(),
+    ...artifactHandlers(),
+    ...catalogHandlers(),
     ...(o.handlers ?? {}),
   };
   const streams: StreamHandlers = events.streams;
@@ -267,6 +281,12 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
               return { status: 304, body: undefined, headers };
             result = result.body;
           }
+          if (result instanceof RawBody)
+            return {
+              status: result.status,
+              body: result.body,
+              headers: { ...headers, ...result.o.headers, 'content-type': result.o.mediaType },
+            };
           if (o.validateResponses && r.response && result !== undefined) {
             const check = r.response.safeParse(result);
             if (!check.success)

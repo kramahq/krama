@@ -1,4 +1,5 @@
 import { PROBLEM_CODES, type Problem } from '@kramahq/contract';
+import { DomainError, VersionConflictError } from '@kramahq/engine';
 import { z } from 'zod';
 
 export const PROBLEM_TYPE_BASE = 'https://kramahq.dev/problems/';
@@ -78,6 +79,13 @@ export function validationProblem(where: 'query' | 'body', e: z.ZodError): ApiPr
 export function toProblem(err: unknown, traceId: string): ApiProblem {
   if (err instanceof ApiProblem) return err;
   if (err instanceof z.ZodError) return validationProblem('body', err);
+  // A rule of the platform, raised by the engine: it already names the contract code it maps to.
+  if (err instanceof DomainError) return new ApiProblem(err.problemCode, err.message, { traceId });
+  if (err instanceof VersionConflictError)
+    return new ApiProblem(
+      'precondition_failed',
+      'The resource changed since you read it; fetch it again and retry',
+    );
   const e = err as { statusCode?: number; code?: string; message?: string };
   // Fastify's own errors (bad JSON, body too large, unsupported media type...).
   if (typeof e.statusCode === 'number' && e.statusCode >= 400 && e.statusCode < 500) {

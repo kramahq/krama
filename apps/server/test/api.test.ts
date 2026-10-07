@@ -32,7 +32,7 @@ let krama: Krama;
 let app: FastifyInstance;
 let calls: { createRun: number };
 
-// Handlers that stand in for M5.2 so the cross-cutting behaviour (idempotency, ETag, status codes) can be tested
+// Handlers that stand in for the real ones so the cross-cutting behaviour (idempotency, ETag, status codes) can be tested
 // on real contract routes.
 function stubSample() {
   return {
@@ -230,7 +230,7 @@ describe('problem+json', () => {
   });
 
   it('answers 501 for a route no handler serves yet, and never leaks an internal error', async () => {
-    const res = await get(`${V1}/packs`, auth);
+    const res = await get(`${V1}/memory/records`, auth);
     expect(res.statusCode).toBe(501);
     expect(problem.parse(res.json()).code).toBe('not_implemented');
   });

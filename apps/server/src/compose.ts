@@ -58,6 +58,10 @@ export interface Krama {
   runner: OrchestratorRunner;
   runtime: ProcessAgentRuntime;
   backends: BackendRegistry;
+  /** The agent definitions this server was started with (from its packs and local files). */
+  definitions: readonly DefinitionBundle[];
+  /** Where agent workspaces live: `runs/<runId>/shared` and `runs/<runId>/agents/<agentId>` under it. */
+  workspaceRoot: string;
   /** Stops agents, the MCP endpoint and the database. Safe to call twice. */
   close(): Promise<void>;
 }
@@ -153,6 +157,8 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     runner,
     runtime,
     backends,
+    definitions: o.definitions,
+    workspaceRoot: join(o.home, 'agents-data', 'workspaces'),
     async close() {
       if (closed) return;
       closed = true;
