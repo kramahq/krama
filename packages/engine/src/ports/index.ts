@@ -464,9 +464,42 @@ export interface BackendCatalog {
   get(id: string): BackendDescriptor | undefined;
 }
 
+/** What an agent reports about one task when asked (`GetTask`, `ListTasks`): its state now and its finished artifacts. */
+export interface TaskSnapshot {
+  taskId: string;
+  contextId?: string;
+  state: TaskState;
+  /** The status message, when the agent gave one. */
+  text?: string;
+  artifacts: Extract<GatewayEvent, { kind: 'artifact' }>[];
+}
+
+export interface TaskListQuery {
+  contextId?: string;
+  state?: TaskState;
+  pageSize?: number;
+  pageToken?: string;
+}
+
 export interface AgentGateway {
   send(agent: AgentRef, message: SendMessage): AsyncIterable<GatewayEvent>;
   cancel(agent: AgentRef, taskId: string): Promise<void>;
+  /** Asks the agent for a task's current state. `undefined` when the agent does not know the task. Never resends anything. */
+  getTask(agent: AgentRef, taskId: string): Promise<TaskSnapshot | undefined>;
+  listTasks(
+    agent: AgentRef,
+    query?: TaskListQuery,
+  ): Promise<{ tasks: TaskSnapshot[]; nextPageToken?: string }>;
+  /**
+   * Follows a task that is already running (`SubscribeToTask`): the first event is its state now, then what follows. It
+   * observes and never sends a message, so reconnecting after a dropped stream cannot start the work twice. A task that is
+   * already finished yields its final state and ends; an unknown task throws.
+   */
+  subscribe(
+    agent: AgentRef,
+    taskId: string,
+    opts?: { signal?: AbortSignal; timeoutMs?: number },
+  ): AsyncIterable<GatewayEvent>;
 }
 
 /** Notified whenever a decision settles, including rejections, so a waiting executor never hangs. */

@@ -55,6 +55,8 @@ export class FakeA2A {
   private readonly streaming: boolean;
   private readonly o: FakeOptions;
   private scripts: Script[] = [];
+  /** Tasks `tasks/get` and `tasks/list` answer with, in the 0.3 shape. */
+  readonly tasks = new Map<string, Json>();
   private server: Server;
   url = '';
   constructor(o: FakeOptions = {}) {
@@ -132,6 +134,32 @@ export class FakeA2A {
         .end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
       return;
     }
+    if (method === 'tasks/get' || method === 'tasks/list') {
+      const reply = (result: Json) =>
+        res
+          .writeHead(200, { 'content-type': 'application/json' })
+          .end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+      const fail = (code: number, message: string) =>
+        res
+          .writeHead(200, { 'content-type': 'application/json' })
+          .end(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code, message } }));
+      if (method === 'tasks/get') {
+        const t = this.tasks.get((body.params as { id: string }).id);
+        if (!t) return fail(-32001, 'Task not found');
+        return reply(v1 ? v1Task(t) : t);
+      }
+      if (!v1) return fail(-32601, 'Method not found');
+      const want = body.params as { contextId?: string };
+      const tasks = [...this.tasks.values()].filter(
+        (t) => !want.contextId || t.contextId === want.contextId,
+      );
+      return reply({
+        tasks: tasks.map(v1Task),
+        nextPageToken: '',
+        pageSize: 50,
+        totalSize: tasks.length,
+      });
+    }
     const s = this.scripts.shift() ?? { frames: [] };
     if (s.stall) return;
     if (s.redirect) {
@@ -202,6 +230,7 @@ const V1_METHODS: Record<string, string> = {
   CancelTask: 'tasks/cancel',
   SubscribeToTask: 'tasks/resubscribe',
   GetTask: 'tasks/get',
+  ListTasks: 'tasks/list',
 };
 
 const STATES: Record<string, string> = {

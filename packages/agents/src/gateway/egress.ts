@@ -1,6 +1,6 @@
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
-import { Agent, fetch as undiciFetch } from 'undici';
+import { Agent, EnvHttpProxyAgent, fetch as undiciFetch, type Dispatcher } from 'undici';
 
 /** Why an outbound call was refused before or while it ran. */
 export class EgressError extends Error {
@@ -96,8 +96,36 @@ export function checkUrl(raw: string, policy: EgressPolicy): URL {
   return url;
 }
 
+/** TLS material (PEM text) for one destination origin: a client certificate for mutual TLS, and/or a private CA. */
+export interface TlsMaterial {
+  cert?: string;
+  key?: string;
+  passphrase?: string;
+  /** Extra trusted CA certificate(s), for a server certificate issued by the organisation's own CA. */
+  ca?: string;
+}
+
+/**
+ * Where outbound calls go through a proxy. `env` reads `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` (either case) when the
+ * request is made; `none` never proxies; an object names the proxy. The destination is still the agent's own origin.
+ */
+export type ProxyConfig = 'env' | 'none' | { url?: string; noProxy?: string };
+
+/** Per-origin request authentication that can be renewed: used for tokens that expire. */
+export interface RequestAuth {
+  headers(): Promise<Record<string, string>>;
+  /** The server answered 401: drop what was sent so the next `headers()` gets a fresh credential. */
+  rejected(): void;
+}
+
 export interface SafeFetchOptions {
   policy: EgressPolicy;
+  /** Default `none`. Applies only to destinations the proxy's own `NO_PROXY` list does not exclude. */
+  proxy?: ProxyConfig;
+  /** TLS material for a destination origin. */
+  tlsFor?: (origin: string) => TlsMaterial | undefined;
+  /** Renewable authentication for a destination origin (OAuth); sent only to that origin, retried once on a 401. */
+  authFor?: (origin: string) => RequestAuth | undefined;
   /** Headers to add for a destination origin (credentials). Never sent anywhere else. */
   credentialsFor?: (origin: string) => Record<string, string> | undefined;
   /** Upper bound for non-streaming calls (card, cancel). Streams are bounded by the gateway's own timers. */
@@ -105,35 +133,60 @@ export interface SafeFetchOptions {
 }
 
 /**
- * A `fetch` for calls to agents: no redirects, no ambient proxy, a response size cap, an origin allow-list and, for
+ * A `fetch` for calls to agents: no redirects, a proxy only when asked for, a response size cap, an origin allow-list and, for
  * agents Krama did not start, a check of the address each socket actually connects to (so a name that later resolves to
  * a private address is refused too). Credentials are attached only for the origin they were issued for.
  */
 export function createSafeFetch(o: SafeFetchOptions): typeof fetch {
   const { policy } = o;
-  const dispatcher = new Agent({
-    connect: policy.allowPrivate
-      ? {}
-      : {
-          lookup(hostname, lookupOptions, callback) {
-            lookup(hostname, { all: true, verbatim: true })
-              .then((addresses) => {
-                if (!addresses.length || addresses.some((a) => !isPublicAddress(a.address)))
-                  throw new EgressError(
-                    'blocked_address',
-                    `${hostname} resolves to a non-public address`,
-                  );
-                const usable = lookupOptions.family
-                  ? addresses.filter((a) => a.family === lookupOptions.family)
-                  : addresses;
-                if (!usable.length) throw new EgressError('blocked_address', 'No usable address');
-                if (lookupOptions.all) callback(null, usable);
-                else callback(null, usable[0]!.address, usable[0]!.family);
-              })
-              .catch((e: unknown) => callback(e as Error, '', 0));
-          },
+  const guard: Agent.Options['connect'] = policy.allowPrivate
+    ? {}
+    : {
+        lookup(hostname, lookupOptions, callback) {
+          lookup(hostname, { all: true, verbatim: true })
+            .then((addresses) => {
+              if (!addresses.length || addresses.some((a) => !isPublicAddress(a.address)))
+                throw new EgressError(
+                  'blocked_address',
+                  `${hostname} resolves to a non-public address`,
+                );
+              const usable = lookupOptions.family
+                ? addresses.filter((a) => a.family === lookupOptions.family)
+                : addresses;
+              if (!usable.length) throw new EgressError('blocked_address', 'No usable address');
+              if (lookupOptions.all) callback(null, usable);
+              else callback(null, usable[0]!.address, usable[0]!.family);
+            })
+            .catch((e: unknown) => callback(e as Error, '', 0));
         },
-  });
+      };
+  // One dispatcher per origin, because the TLS material is per origin.
+  const dispatchers = new Map<string, Dispatcher>();
+  const dispatcherFor = (origin: string): Dispatcher => {
+    const hit = dispatchers.get(origin);
+    if (hit) return hit;
+    const tls = o.tlsFor?.(origin);
+    const material = tls ? { ...tls } : {};
+    const proxy = o.proxy ?? 'none';
+    // Direct connections check the address they connect to. A proxied one cannot be checked that way (the socket goes to
+    // the proxy, which resolves the name), so the proxy is then the control point and only the origin allow-list and
+    // literal-address checks apply.
+    const d: Dispatcher =
+      proxy === 'none'
+        ? new Agent({ connect: { ...guard, ...material } })
+        : new EnvHttpProxyAgent({
+            connect: { ...guard, ...material },
+            requestTls: material,
+            ...(typeof proxy === 'object' && proxy.url
+              ? { httpProxy: proxy.url, httpsProxy: proxy.url }
+              : {}),
+            ...(typeof proxy === 'object' && proxy.noProxy !== undefined
+              ? { noProxy: proxy.noProxy }
+              : {}),
+          });
+    dispatchers.set(origin, d);
+    return d;
+  };
 
   return async (input, init) => {
     const source = input instanceof Request ? input : undefined;
@@ -141,25 +194,42 @@ export function createSafeFetch(o: SafeFetchOptions): typeof fetch {
       typeof input === 'string' || input instanceof URL ? input.toString() : input.url,
       policy,
     );
-    const headers: Record<string, string> = {};
-    source?.headers.forEach((v, k) => (headers[k.toLowerCase()] = v));
-    new Headers(init?.headers).forEach((v, k) => (headers[k.toLowerCase()] = v));
+    const base: Record<string, string> = {};
+    source?.headers.forEach((v, k) => (base[k.toLowerCase()] = v));
+    new Headers(init?.headers).forEach((v, k) => (base[k.toLowerCase()] = v));
     for (const [k, v] of Object.entries(o.credentialsFor?.(url.origin) ?? {}))
-      headers[k.toLowerCase()] = v;
-    delete headers['cookie'];
-    delete headers['proxy-authorization'];
+      base[k.toLowerCase()] = v;
+    delete base['cookie'];
+    delete base['proxy-authorization'];
 
     let body: unknown = init?.body;
     if (body === undefined && source && source.method !== 'GET' && source.method !== 'HEAD')
       body = await source.text();
-    const res = await undiciFetch(url, {
-      method: init?.method ?? source?.method ?? 'GET',
-      headers,
-      body: body as never,
-      redirect: 'manual',
-      dispatcher,
-      signal: init?.signal ?? o.signal ?? null,
-    });
+    const auth = o.authFor?.(url.origin);
+    const send = async (): Promise<Awaited<ReturnType<typeof undiciFetch>>> => {
+      const headers = { ...base };
+      for (const [k, v] of Object.entries((await auth?.headers()) ?? {}))
+        headers[k.toLowerCase()] = v;
+      return undiciFetch(url, {
+        method: init?.method ?? source?.method ?? 'GET',
+        headers,
+        body: body as never,
+        redirect: 'manual',
+        dispatcher: dispatcherFor(url.origin),
+        signal: init?.signal ?? o.signal ?? null,
+      });
+    };
+    let res = await send();
+    // A renewable credential that the server rejects is renewed once; the request is replayed only when its body can be.
+    if (
+      res.status === 401 &&
+      auth &&
+      (typeof body === 'string' || body === undefined || body === null)
+    ) {
+      await res.body?.cancel().catch(() => undefined);
+      auth.rejected();
+      res = await send();
+    }
 
     if (res.status >= 300 && res.status < 400) {
       await res.body?.cancel().catch(() => undefined);
