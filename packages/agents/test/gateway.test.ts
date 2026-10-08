@@ -45,6 +45,56 @@ describe.each(['1.0', '0.3'] as const)('against an A2A %s agent', (v) => {
     version = v;
   });
 
+  describe('task operations', () => {
+    const done = (id: string, ctx = 'ctx_1') => ({
+      kind: 'task',
+      id,
+      contextId: ctx,
+      status: { state: 'completed' },
+      artifacts: [
+        { artifactId: 'a1', name: 'response', parts: [{ kind: 'text', text: 'the answer' }] },
+      ],
+    });
+
+    it('getTask returns the state and artifacts; an unknown task is undefined', async () => {
+      const s = await fake();
+      (s as unknown as { tasks: Map<string, unknown> }).tasks.set('task_9', done('task_9'));
+      const gw = new A2AGateway();
+      const snap = await gw.getTask(ref(s), 'task_9');
+      expect(snap).toMatchObject({ taskId: 'task_9', contextId: 'ctx_1', state: 'completed' });
+      expect(snap!.artifacts.map(decode)).toEqual(['the answer']);
+      expect(await gw.getTask(ref(s), 'nope')).toBeUndefined();
+    });
+
+    it('subscribe observes with tasks/resubscribe and sends no message', async () => {
+      const s = (await fake()).queue({
+        frames: [task('working'), status('working'), status('completed', { final: true })],
+      });
+      const gw = new A2AGateway();
+      const evs = await collect(gw.subscribe(ref(s), 'task_1'));
+      expect(states(evs)).toEqual(['working', 'working', 'completed']);
+      expect(s.methods().filter((m) => m !== 'tasks/resubscribe')).toEqual([]);
+      expect(s.methods()).toContain('tasks/resubscribe');
+    });
+
+    if (v === '1.0')
+      it('listTasks filters by context', async () => {
+        const s = await fake();
+        const tasks = (s as unknown as { tasks: Map<string, unknown> }).tasks;
+        tasks.set('a', done('a', 'ctx_a'));
+        tasks.set('b', done('b', 'ctx_b'));
+        const r = await new A2AGateway().listTasks(ref(s), { contextId: 'ctx_b' });
+        expect(r.tasks.map((t) => t.taskId)).toEqual(['b']);
+      });
+    else
+      it('listTasks is not part of 0.3 and fails as a protocol error', async () => {
+        const s = await fake();
+        await expect(new A2AGateway().listTasks(ref(s))).rejects.toMatchObject({
+          code: 'rpc_error',
+        });
+      });
+  });
+
   describe('the tap', () => {
     const run = { runId: 'run_1', phaseId: 'draft', stepId: 'step_1' };
     const taps = () => {

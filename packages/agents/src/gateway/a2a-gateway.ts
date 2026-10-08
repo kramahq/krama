@@ -1,4 +1,12 @@
-import { AgentCard, CancelTaskRequest, SendMessageRequest } from '@a2a-js/sdk';
+import {
+  AgentCard,
+  CancelTaskRequest,
+  GetTaskRequest,
+  ListTasksRequest,
+  SendMessageRequest,
+  SubscribeToTaskRequest,
+  TaskState as WireTaskState,
+} from '@a2a-js/sdk';
 import {
   ClientFactory,
   DefaultAgentCardResolver,
@@ -12,7 +20,16 @@ import type {
   GatewayEvent,
   GatewayTap,
   SendMessage,
+  TaskListQuery,
+  TaskSnapshot,
 } from '@kramahq/engine';
+import { OAuthTokenProvider, TokenError, type AgentAuth } from './auth.js';
+import {
+  CardSignatureError,
+  checkCard,
+  type CardTrust,
+  type SignatureStatus,
+} from './card-trust.js';
 import { reportCard, type CardReport } from './card-report.js';
 import { ArtifactAssembler, decodeEvent, isTerminal, type DecodeState } from './codec.js';
 import {
@@ -22,14 +39,25 @@ import {
   createSafeFetch,
   redact,
   type EgressPolicy,
+  type ProxyConfig,
+  type RequestAuth,
+  type TlsMaterial,
 } from './egress.js';
 import { dropMalformedSseFrames } from './sse.js';
-import { streamToWire } from './wire.js';
+import { streamToWire, taskToWire } from './wire.js';
 
 export class GatewayError extends Error {
   constructor(
     readonly code:
-      'unreachable' | 'http_error' | 'rpc_error' | 'bad_response' | 'blocked' | 'too_large',
+      | 'unreachable'
+      | 'http_error'
+      | 'rpc_error'
+      | 'bad_response'
+      | 'blocked'
+      | 'too_large'
+      | 'unauthenticated'
+      | 'untrusted_card'
+      | 'task_not_found',
     message: string,
     readonly detail?: unknown,
   ) {
@@ -52,6 +80,21 @@ export interface GatewayOptions {
    * Sent only to that origin, and removed from any error text.
    */
   credentials?: Record<string, Record<string, string>>;
+  /**
+   * How Krama authenticates to an agent origin: an OAuth 2.0 client-credentials grant (the token is fetched, cached and
+   * renewed, and retried once on a 401) or a fixed bearer token. Sent only to that origin. Secrets are masked in errors.
+   */
+  auth?: Record<string, AgentAuth>;
+  /** TLS material per destination origin: a client certificate and key for mutual TLS, and/or a private CA. PEM text. */
+  tls?: Record<string, TlsMaterial>;
+  /**
+   * Proxy for `external` agents. Default `env`: `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` are honoured. Agents Krama
+   * started are always reached directly. Through a proxy the connect-time address check cannot run (the proxy resolves the
+   * name), so the proxy becomes the control point; see ADR-0029.
+   */
+  proxy?: ProxyConfig;
+  /** Signed agent cards (external agents): which keys to trust and whether a signature is required. */
+  cards?: CardTrust;
   /** How long a fetched agent card is trusted before it is read again. Default 5 min. */
   cardTtlMs?: number;
   /** Budget for the calls that are not a delegation: reading a card, cancelling. Default 10 s. */
@@ -81,7 +124,11 @@ export function correlationMetadata(
 }
 
 export class A2AGateway implements AgentGateway {
-  private readonly clients = new Map<string, { client: Client; card: AgentCard; at: number }>();
+  private readonly clients = new Map<
+    string,
+    { client: Client; card: AgentCard; at: number; signature: SignatureStatus }
+  >();
+  private readonly providers = new Map<string, OAuthTokenProvider>();
   private readonly secrets: string[];
 
   constructor(private readonly o: GatewayOptions = {}) {
@@ -96,15 +143,89 @@ export class A2AGateway implements AgentGateway {
 
   private credentialsFor = (origin: string) => this.o.credentials?.[origin];
 
+  private proxyFor(agent: AgentRef): ProxyConfig {
+    return agent.external ? (this.o.proxy ?? 'env') : 'none';
+  }
+
+  /** The renewable credential for an origin, if one is configured. One provider per origin, shared by every call. */
+  private authFor(
+    policy: EgressPolicy,
+    proxy: ProxyConfig,
+  ): (origin: string) => RequestAuth | undefined {
+    return (origin) => {
+      const cfg = this.o.auth?.[origin];
+      if (!cfg) return undefined;
+      if (cfg.type === 'bearer')
+        return {
+          headers: async () => ({ authorization: `Bearer ${cfg.token}` }),
+          rejected: () => undefined,
+        };
+      const hit = this.providers.get(origin);
+      if (hit) return hit;
+      // The token endpoint is reached under the same rules as the agent, with its own origin allowed.
+      const tokenOrigin = safeOrigin(cfg.tokenUrl);
+      const tokenPolicy: EgressPolicy = {
+        ...policy,
+        ...(policy.allowedOrigins
+          ? { allowedOrigins: [...policy.allowedOrigins, tokenOrigin] }
+          : {}),
+      };
+      const provider = new OAuthTokenProvider(
+        cfg,
+        this.guardedFetch(
+          createSafeFetch({ policy: tokenPolicy, proxy, tlsFor: (o) => this.o.tls?.[o] }),
+        ),
+      );
+      this.providers.set(origin, provider);
+      return provider;
+    };
+  }
+
+  /** Everything that must be masked in text we return or log. */
+  private secretValues(): string[] {
+    const proxyEnv = [
+      process.env['HTTPS_PROXY'],
+      process.env['https_proxy'],
+      process.env['HTTP_PROXY'],
+      process.env['http_proxy'],
+      typeof this.o.proxy === 'object' ? this.o.proxy.url : undefined,
+    ];
+    const proxySecrets = proxyEnv.flatMap((u) => {
+      try {
+        return u ? [decodeURIComponent(new URL(u).password)].filter(Boolean) : [];
+      } catch {
+        return [];
+      }
+    });
+    const auth = Object.values(this.o.auth ?? {}).flatMap((a) =>
+      a.type === 'bearer' ? [a.token] : [a.clientSecret],
+    );
+    const tokens = [...this.providers.values()].flatMap((p) => p.secrets());
+    const tls = Object.values(this.o.tls ?? {}).flatMap((t) => [t.key, t.passphrase]);
+    return [...this.secrets, ...proxySecrets, ...auth, ...tokens, ...tls].filter(
+      (s): s is string => !!s,
+    );
+  }
+
   /** The SDK client for an agent, built from its card (`supportedInterfaces`) and cached for a while. */
-  private async clientFor(agent: AgentRef): Promise<{ client: Client; card: AgentCard }> {
+  private async clientFor(
+    agent: AgentRef,
+  ): Promise<{ client: Client; card: AgentCard; signature: SignatureStatus }> {
     const key = `${agent.external ? 'x' : 'm'}|${agent.url}`;
     const hit = this.clients.get(key);
     if (hit && Date.now() - hit.at < (this.o.cardTtlMs ?? 5 * 60_000)) return hit;
 
     const policy = this.policy(agent);
+    const proxy = this.proxyFor(agent);
     const fetchImpl = this.guardedFetch(
-      createSafeFetch({ policy, credentialsFor: this.credentialsFor }),
+      createSafeFetch({
+        policy,
+        proxy,
+        credentialsFor: this.credentialsFor,
+        authFor: this.authFor(policy, proxy),
+        tlsFor: (o) => this.o.tls?.[o],
+      }),
+      agent,
     );
     const resolver = new DefaultAgentCardResolver({ fetchImpl, legacyCompat: { enabled: true } });
     const factory = new ClientFactory({
@@ -126,6 +247,17 @@ export class A2AGateway implements AgentGateway {
     // is on the allow-list. gRPC is not used.
     const origin = new URL(agent.url).origin;
     const allowed = new Set([origin, ...(policy.allowedOrigins ?? [])]);
+    // A signature is checked before anything in the card is believed, including where it says to connect.
+    let signature: SignatureStatus = 'unsigned';
+    if (agent.external) {
+      try {
+        signature = await checkCard(card, this.o.cards, { fetchImpl, allowedOrigins: allowed });
+      } catch (e) {
+        throw e instanceof CardSignatureError
+          ? new GatewayError('untrusted_card', this.clean(`${agent.role}: ${e.message}`))
+          : this.fail(e, agent, 'verifying the agent card');
+      }
+    }
     const usable = card.supportedInterfaces.filter(
       (i) => i.protocolBinding.toUpperCase() !== 'GRPC' && allowed.has(safeOrigin(i.url)),
     );
@@ -141,16 +273,24 @@ export class A2AGateway implements AgentGateway {
     } catch (e) {
       throw this.fail(e, agent, 'preparing the client');
     }
-    const entry = { client, card, at: Date.now() };
+    const entry = { client, card, at: Date.now(), signature };
     this.clients.set(key, entry);
     return entry;
   }
 
   /** Network failures from the safe fetch become typed errors before the SDK can wrap them. */
-  private guardedFetch(inner: typeof fetch): typeof fetch {
+  private guardedFetch(inner: typeof fetch, agent?: AgentRef): typeof fetch {
     return async (input, init) => {
       try {
         const res = await inner(input, init);
+        // The SDK reports a 401 as an unrelated protocol error, so the status is named here.
+        if (agent && (res.status === 401 || res.status === 403)) {
+          await res.body?.cancel().catch(() => undefined);
+          throw new GatewayError(
+            'unauthenticated',
+            `${agent.role} answered HTTP ${res.status}: the credentials were missing or rejected`,
+          );
+        }
         return (res.headers.get('content-type') ?? '').includes('text/event-stream') && res.body
           ? new Response(res.body.pipeThrough(dropMalformedSseFrames()), {
               status: res.status,
@@ -161,7 +301,8 @@ export class A2AGateway implements AgentGateway {
         if (init?.signal?.aborted) throw e;
         // undici wraps an error thrown while connecting (a refused address) as `fetch failed` with the cause attached.
         for (let c: unknown = e, n = 0; c && n < 6; c = (c as { cause?: unknown }).cause, n++)
-          if (c instanceof EgressError) throw c;
+          if (c instanceof EgressError || c instanceof TokenError || c instanceof GatewayError)
+            throw c;
         throw new GatewayError('unreachable', (e as Error).message, { cause: e });
       }
     };
@@ -169,9 +310,9 @@ export class A2AGateway implements AgentGateway {
 
   /** Describes an agent's card: what it advertises, which interface is used, what would get in the way. Advisory. */
   async inspect(agent: AgentRef): Promise<CardReport> {
-    const { card, client } = await this.clientFor(agent);
+    const { card, client, signature } = await this.clientFor(agent);
     const url = (client.transport as unknown as { endpoint?: string }).endpoint;
-    return reportCard(card, url);
+    return reportCard(card, url, signature);
   }
 
   async *send(agent: AgentRef, message: SendMessage): AsyncGenerator<GatewayEvent> {
@@ -298,11 +439,111 @@ export class A2AGateway implements AgentGateway {
     }
   }
 
+  async getTask(agent: AgentRef, taskId: string): Promise<TaskSnapshot | undefined> {
+    const { client } = await this.clientFor(agent);
+    try {
+      const t = await client.getTask(GetTaskRequest.fromJSON({ id: taskId }), {
+        signal: AbortSignal.timeout(this.o.requestTimeoutMs ?? 10_000),
+      });
+      return snapshot(taskToWire(t));
+    } catch (e) {
+      if (isTaskNotFound(e)) return undefined;
+      throw this.fail(e, agent, 'reading the task');
+    }
+  }
+
+  async listTasks(
+    agent: AgentRef,
+    query: TaskListQuery = {},
+  ): Promise<{ tasks: TaskSnapshot[]; nextPageToken?: string }> {
+    const { client } = await this.clientFor(agent);
+    try {
+      const res = await client.listTasks(
+        ListTasksRequest.fromJSON({
+          ...(query.contextId ? { contextId: query.contextId } : {}),
+          ...(query.state ? { status: WIRE_STATE[query.state] } : {}),
+          ...(query.pageSize ? { pageSize: query.pageSize } : {}),
+          ...(query.pageToken ? { pageToken: query.pageToken } : {}),
+          includeArtifacts: true,
+        }),
+        { signal: AbortSignal.timeout(this.o.requestTimeoutMs ?? 10_000) },
+      );
+      return {
+        tasks: res.tasks.map((t) => snapshot(taskToWire(t))),
+        ...(res.nextPageToken ? { nextPageToken: res.nextPageToken } : {}),
+      };
+    } catch (e) {
+      throw this.fail(e, agent, 'listing tasks');
+    }
+  }
+
+  async *subscribe(
+    agent: AgentRef,
+    taskId: string,
+    opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+  ): AsyncGenerator<GatewayEvent> {
+    const total = opts.timeoutMs ?? this.o.defaultTimeoutMs ?? 30 * 60_000;
+    const idle = this.o.inactivityMs ?? 15 * 60_000;
+    const ctl = new AbortController();
+    const stop = () => ctl.abort();
+    let idleTimer = setTimeout(stop, idle);
+    const totalTimer = setTimeout(stop, total);
+    opts.signal?.addEventListener('abort', stop, { once: true });
+    if (opts.signal?.aborted) stop();
+    const st: DecodeState = { assembler: new ArtifactAssembler() };
+    try {
+      const { client } = await this.clientFor(agent);
+      try {
+        for await (const sr of client.resubscribeTask(
+          SubscribeToTaskRequest.fromJSON({ id: taskId }),
+          {
+            signal: ctl.signal,
+          },
+        )) {
+          clearTimeout(idleTimer);
+          idleTimer = setTimeout(stop, idle);
+          const wire = streamToWire(sr);
+          if (wire) yield* decodeEvent(wire, st);
+        }
+      } catch (e) {
+        // Our own stop (caller left, or a timer) ends the generator quietly; the caller reconciles with `getTask`.
+        if (ctl.signal.aborted) return;
+        if (isTaskNotFound(e))
+          throw new GatewayError('task_not_found', `${agent.role} does not know task ${taskId}`);
+        // A finished task cannot be subscribed to (A2A UnsupportedOperation); its final state is read instead.
+        if (isUnsupportedOperation(e)) {
+          const done = await this.getTask(agent, taskId);
+          if (!done)
+            throw new GatewayError('task_not_found', `${agent.role} does not know task ${taskId}`);
+          yield* done.artifacts;
+          yield {
+            kind: 'state',
+            state: done.state,
+            taskId,
+            ...(done.contextId ? { contextId: done.contextId } : {}),
+            ...(done.text ? { text: done.text } : {}),
+          };
+          return;
+        }
+        throw this.fail(e, agent, 'following the task');
+      }
+      yield* st.assembler.flush();
+    } finally {
+      clearTimeout(totalTimer);
+      clearTimeout(idleTimer);
+      opts.signal?.removeEventListener('abort', stop);
+    }
+  }
+
+  private clean(text: string): string {
+    return redact(text, this.secretValues());
+  }
+
   /** Turns whatever the SDK or the network threw into a `GatewayError`, with secrets removed from the text. */
   private fail(e: unknown, agent: AgentRef, doing: string): GatewayError {
     const chain: unknown[] = [];
     for (let c = e; c && chain.length < 6; c = (c as { cause?: unknown }).cause) chain.push(c);
-    const clean = (t: string) => redact(t, this.secrets);
+    const clean = (t: string) => this.clean(t);
     const gw = chain.find((c): c is GatewayError => c instanceof GatewayError);
     if (gw && gw.code === 'unreachable')
       return new GatewayError(
@@ -317,6 +558,9 @@ export class A2AGateway implements AgentGateway {
         clean(`${agent.role}: ${eg.message}`),
         { reason: eg.code },
       );
+    const tokenErr = chain.find((c): c is TokenError => c instanceof TokenError);
+    if (tokenErr)
+      return new GatewayError('unauthenticated', clean(`${agent.role}: ${tokenErr.message}`));
     const msg = e instanceof Error ? e.message : String(e);
     const http = /HTTP error[^:]*: (\d{3})/.exec(msg) ?? /Status: (\d{3})/.exec(msg);
     if (http)
@@ -348,6 +592,50 @@ export class A2AGateway implements AgentGateway {
       clean(`${agent.role} returned an unreadable response during ${doing}: ${msg}`),
     );
   }
+}
+
+const WIRE_STATE: Record<string, WireTaskState | string> = {
+  working: 'TASK_STATE_WORKING',
+  completed: 'TASK_STATE_COMPLETED',
+  failed: 'TASK_STATE_FAILED',
+  canceled: 'TASK_STATE_CANCELED',
+  input_required: 'TASK_STATE_INPUT_REQUIRED',
+};
+
+/** A task snapshot in the codec's plain shape → the port's `TaskSnapshot`. */
+function snapshot(wire: Record<string, unknown>): TaskSnapshot {
+  const st: DecodeState = { assembler: new ArtifactAssembler() };
+  const events = decodeEvent(wire, st);
+  const state = events.findLast((e) => e.kind === 'state');
+  return {
+    taskId: st.taskId ?? String(wire['id'] ?? ''),
+    ...(st.contextId ? { contextId: st.contextId } : {}),
+    state: state?.kind === 'state' ? state.state : 'working',
+    ...(state?.kind === 'state' && state.text ? { text: state.text } : {}),
+    artifacts: events.filter(
+      (e): e is Extract<GatewayEvent, { kind: 'artifact' }> => e.kind === 'artifact',
+    ),
+  };
+}
+
+/** A2A `TaskNotFoundError` (-32001), however the transport reports it. */
+function isTaskNotFound(e: unknown): boolean {
+  const x = e as { code?: unknown; name?: string; message?: string };
+  return (
+    x?.code === -32001 ||
+    /TaskNotFound/i.test(x?.name ?? '') ||
+    /task not found|\(Code: -32001\)/i.test(x?.message ?? '')
+  );
+}
+
+/** A2A `UnsupportedOperationError` (-32004): for `SubscribeToTask`, the task has already finished. */
+function isUnsupportedOperation(e: unknown): boolean {
+  const x = e as { code?: unknown; name?: string; message?: string };
+  return (
+    x?.code === -32004 ||
+    /UnsupportedOperation/i.test(x?.name ?? '') ||
+    /cannot be subscribed|\(Code: -32004\)/i.test(x?.message ?? '')
+  );
 }
 
 const safeOrigin = (u: string): string => {

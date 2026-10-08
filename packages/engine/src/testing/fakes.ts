@@ -20,6 +20,8 @@ import {
   type AgentRef,
   type AgentRuntime,
   type SpawnSpec,
+  type TaskListQuery,
+  type TaskSnapshot,
   type ArtifactCatalog,
   type ArtifactContent,
   type ArtifactStore,
@@ -590,6 +592,33 @@ export class FakeAgentGateway implements AgentGateway {
   }
   async cancel(_agent: AgentRef, taskId: string) {
     this.canceled.push(taskId);
+  }
+  /** Tasks `getTask`, `listTasks` and `subscribe` know about; set by a test. */
+  readonly tasks = new Map<string, TaskSnapshot>();
+  readonly subscribed: string[] = [];
+  async getTask(_agent: AgentRef, taskId: string) {
+    return this.tasks.get(taskId);
+  }
+  async listTasks(_agent: AgentRef, query: TaskListQuery = {}) {
+    return {
+      tasks: [...this.tasks.values()].filter(
+        (t) =>
+          (!query.contextId || t.contextId === query.contextId) &&
+          (!query.state || t.state === query.state),
+      ),
+    };
+  }
+  async *subscribe(_agent: AgentRef, taskId: string): AsyncIterable<GatewayEvent> {
+    this.subscribed.push(taskId);
+    const t = this.tasks.get(taskId);
+    if (!t) throw new Error(`Unknown task ${taskId}`);
+    yield {
+      kind: 'state',
+      state: t.state,
+      taskId,
+      ...(t.contextId ? { contextId: t.contextId } : {}),
+      ...(t.text ? { text: t.text } : {}),
+    };
   }
 }
 

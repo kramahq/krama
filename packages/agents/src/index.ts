@@ -13,4 +13,6 @@ export * from './gateway/codec.js';
 export * from './gateway/a2a-gateway.js';
 export * from './gateway/egress.js';
 export * from './gateway/card-report.js';
+export * from './gateway/auth.js';
+export * from './gateway/card-trust.js';
 export * from './definitions.js';

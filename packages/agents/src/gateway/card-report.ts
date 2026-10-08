@@ -13,6 +13,8 @@ export interface CardReport {
   selected?: { binding: string; version: string; url: string };
   streaming: boolean;
   skills: number;
+  /** `verified`: a signature checked out against a trusted key. `unverified`: signed, but no key to check it with. */
+  signature?: 'verified' | 'unsigned' | 'unverified';
   issues: CardIssue[];
 }
 
@@ -26,7 +28,11 @@ const brief = (i: AgentCard['supportedInterfaces'][number]) => ({
  * An advisory view of an agent card: what it advertises and what would get in the way. It never blocks a call. A
  * strict check would turn away agents that work fine, so problems are reported for a person to judge.
  */
-export function reportCard(card: AgentCard, selectedUrl?: string): CardReport {
+export function reportCard(
+  card: AgentCard,
+  selectedUrl?: string,
+  signature?: CardReport['signature'],
+): CardReport {
   const interfaces = card.supportedInterfaces.map(brief);
   const issues: CardIssue[] = [];
   const warn = (code: string, message: string) =>
@@ -64,12 +70,15 @@ export function reportCard(card: AgentCard, selectedUrl?: string): CardReport {
       code: 'no-skills',
       message: 'The card lists no skills, so it cannot be matched by capability.',
     });
+  if (signature === 'unverified')
+    warn('signature-unchecked', 'The card is signed, but no key is configured to verify it.');
   const selected = selectedUrl ? interfaces.find((i) => i.url === selectedUrl) : undefined;
   return {
     interfaces,
     ...(selected ? { selected } : {}),
     streaming: Boolean(card.capabilities?.streaming),
     skills: card.skills?.length ?? 0,
+    ...(signature ? { signature } : {}),
     issues,
   };
 }
