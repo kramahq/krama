@@ -1,5 +1,17 @@
 # @kramahq/agents
 
+## 0.2.0
+
+### Minor Changes
+
+- bfcfd89: The agent gateway now speaks A2A v1.0 through the official `@a2a-js/sdk` client. It reads each agent's card (`supportedInterfaces`), sends `A2A-Version: 1.0`, and uses the JSON-RPC or HTTP+JSON interface the card advertises; agents that only speak 0.3 are reached through the SDK's compatibility layer. Calls to external agents are hardened: public addresses only, no redirects, a response size cap, an origin allow-list, and credentials sent only to the origin they were issued for. `AgentRef` gains an optional `external` flag, `A2AGateway.inspect()` returns an advisory card report, and the `jsonRpcPath` and `fetch` options are gone (the card says where to call).
+
+### Patch Changes
+
+- Updated dependencies [bfcfd89]
+- Updated dependencies [5b37459]
+  - @kramahq/engine@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

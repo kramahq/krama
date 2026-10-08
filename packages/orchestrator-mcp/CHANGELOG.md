@@ -1,5 +1,13 @@
 # @kramahq/orchestrator-mcp
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [bfcfd89]
+- Updated dependencies [5b37459]
+  - @kramahq/engine@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
