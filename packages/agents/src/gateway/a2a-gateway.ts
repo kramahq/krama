@@ -64,6 +64,9 @@ export class GatewayError extends Error {
     super(message);
     this.name = 'GatewayError';
   }
+
+  /** `false`: the failure happened before the message left, so sending it again is safe. Set by `send`. */
+  dispatched?: boolean;
 }
 
 export interface GatewayOptions {
@@ -336,7 +339,7 @@ export class A2AGateway implements AgentGateway {
 
     const st: DecodeState = { assembler: new ArtifactAssembler() };
     let sawTerminal = false;
-    const callId = newMessageId();
+    const callId = message.messageId ?? newMessageId();
     let tapIndex = 0;
     const tap = (
       direction: 'out' | 'in',
@@ -359,7 +362,11 @@ export class A2AGateway implements AgentGateway {
       }
     };
     try {
-      const { client } = await this.clientFor(agent);
+      const { client } = await this.clientFor(agent).catch((e: unknown) => {
+        // Nothing has been sent yet: a failure here (card, address, credentials) can be retried safely.
+        if (e instanceof GatewayError) e.dispatched = false;
+        throw e;
+      });
       const request = SendMessageRequest.fromJSON({
         message: {
           messageId: callId,
@@ -385,6 +392,7 @@ export class A2AGateway implements AgentGateway {
       } catch (e) {
         if (ctl.signal.aborted) throw e;
         const failure = this.fail(e, agent, 'the delegation');
+        failure.dispatched = true;
         tap('in', 'error', { code: failure.code, message: failure.message });
         throw failure;
       }

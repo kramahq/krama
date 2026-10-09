@@ -391,8 +391,18 @@ export interface GatewayTapEvent {
 /** Called for every request and frame, synchronously and without waiting; it must not throw or slow the stream. */
 export type GatewayTap = (e: GatewayTapEvent) => void;
 
+/**
+ * An error from a gateway that says whether the request had left before it failed. `false`: nothing reached the agent, so
+ * sending again is safe. Anything else (or an error without it) is treated as possibly delivered.
+ */
+export interface DispatchAware {
+  dispatched?: boolean;
+}
+
 export interface SendMessage {
   text: string;
+  /** The A2A `messageId` to use. Fixed by the caller so a repeat of the same send is recognisable to the agent. */
+  messageId?: string;
   /** Reuse an existing conversation. */
   contextId?: string;
   /** Overrides the default delegation timeout (long media jobs). */
