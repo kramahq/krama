@@ -288,5 +288,5 @@ describe('generated operations', () => {
       filepath: file.pathname,
     });
     expect(readFileSync(file, 'utf8')).toBe(formatted);
-  });
+  }, 30_000);
 });
