@@ -13,7 +13,7 @@ export interface Harness {
 
 export function setup(pack: Pack = authorReviewerPack(), policy = {}): Harness {
   const p = createFakePorts([pack]);
-  return { p, engine: createEngine(p, policy) };
+  return { p, engine: createEngine(p, policy, { delivery: { sleep: async () => undefined } }) };
 }
 
 export const ok = { status: 'success' as const, reason: 'fine', gating: 'continue' as const };

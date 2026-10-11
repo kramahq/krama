@@ -3,7 +3,7 @@ import type { Ctx, Policy } from './context.js';
 import { DecisionService } from './decision-service.js';
 import { IngestService } from './ingest-service.js';
 import { RunService } from './run-service.js';
-import { StepService } from './step-service.js';
+import { StepService, type DeliveryPolicy } from './step-service.js';
 import type { Ports } from '../ports/index.js';
 
 export * from './context.js';
@@ -16,7 +16,12 @@ export {
   type IngestMeta,
   type IngestSubject,
 } from './ingest-service.js';
-export { StepService, type DelegateInput, type DelegateResult } from './step-service.js';
+export {
+  StepService,
+  type DelegateInput,
+  type DelegateResult,
+  type DeliveryPolicy,
+} from './step-service.js';
 
 export interface Engine {
   runs: RunService;
@@ -28,7 +33,11 @@ export interface Engine {
 }
 
 /** Builds the use cases over a set of ports. Adapters implement the ports; the server wires them. */
-export function createEngine(ports: Ports, policy: Policy = {}): Engine {
+export function createEngine(
+  ports: Ports,
+  policy: Policy = {},
+  options: { delivery?: Partial<DeliveryPolicy> } = {},
+): Engine {
   const ctx: Ctx = { p: ports, policy };
   const budget = new BudgetService(ctx);
   const decisions = new DecisionService(ctx);
@@ -36,7 +45,7 @@ export function createEngine(ports: Ports, policy: Policy = {}): Engine {
     runs: new RunService(ctx),
     decisions,
     budget,
-    steps: new StepService(ctx, budget, decisions),
+    steps: new StepService(ctx, budget, decisions, options.delivery),
     ingest: new IngestService(ctx, budget),
   };
 }

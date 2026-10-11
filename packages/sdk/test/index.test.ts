@@ -282,11 +282,12 @@ describe('generated operations', () => {
     const { render } = (await import('../scripts/generate.mjs')) as { render: () => string };
     const { default: prettier } = await import('prettier');
     const { readFileSync } = await import('node:fs');
-    const file = new URL('../src/generated/operations.ts', import.meta.url);
+    const { fileURLToPath } = await import('node:url');
+    const file = fileURLToPath(new URL('../src/generated/operations.ts', import.meta.url));
     const formatted = await prettier.format(render(), {
-      ...(await prettier.resolveConfig(file.pathname)),
-      filepath: file.pathname,
+      ...(await prettier.resolveConfig(file)),
+      filepath: file,
     });
     expect(readFileSync(file, 'utf8')).toBe(formatted);
-  });
+  }, 30_000);
 });

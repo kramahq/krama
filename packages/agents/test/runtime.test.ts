@@ -313,10 +313,11 @@ describe('supervision', () => {
   it('detects a crash and restarts within policy, keeping the id', async () => {
     const { rt, events } = rig({ restart: { max: 1, backoffMs: 10 } });
     const a = await rt.spawn({
-      definition: definition({ crashAfterMs: 400 }),
+      definition: definition(),
       workspace: { mode: 'isolated', key: 'r' },
     });
     const firstPid = a.pid!;
+    await fetch(`${a.url}/debug/crash`);
     await until(async () => (await eventTypes(events)).includes('agent.restarted'));
     const now = rt.get(a.id)!;
     expect(now.status).toBe('idle');
@@ -327,9 +328,10 @@ describe('supervision', () => {
   it('brings a crashed agent back on the same port, so agents given its address keep working', async () => {
     const { rt, events } = rig({ restart: { max: 1, backoffMs: 10 } });
     const a = await rt.spawn({
-      definition: definition({ crashAfterMs: 400 }),
+      definition: definition(),
       workspace: { mode: 'isolated', key: 'r' },
     });
+    await fetch(`${a.url}/debug/crash`);
     await until(async () => (await eventTypes(events)).includes('agent.restarted'));
     const now = rt.get(a.id)!;
     expect(now.port).toBe(a.port);
@@ -365,9 +367,10 @@ describe('supervision', () => {
   it('marks the agent stopped with its last output when restarts are exhausted', async () => {
     const { rt, events } = rig({ restart: { max: 0, backoffMs: 5 } });
     const a = await rt.spawn({
-      definition: definition({ crashAfterMs: 300 }),
+      definition: definition(),
       workspace: { mode: 'isolated', key: 'r' },
     });
+    await fetch(`${a.url}/debug/crash`);
     await until(async () => (await eventTypes(events)).includes('agent.stopped'));
     expect(rt.get(a.id)?.status).toBe('stopped');
     const stopped = (await events.read()).find((e) => e.type === 'agent.stopped')!;

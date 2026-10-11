@@ -541,8 +541,11 @@ describe.each(['1.0', '0.3'] as const)('against an A2A %s agent', (v) => {
     it('a caller abort cancels the task and ends canceled', async () => {
       const s = (await fake()).queue({ frames: [task('working')], hang: true });
       const ac = new AbortController();
-      setTimeout(() => ac.abort(), 150);
-      const evs = await collect(new A2AGateway().send(ref(s), { text: 'x', signal: ac.signal }));
+      const evs: GatewayEvent[] = [];
+      for await (const e of new A2AGateway().send(ref(s), { text: 'x', signal: ac.signal })) {
+        evs.push(e);
+        if (e.kind === 'state' && e.state === 'working') ac.abort();
+      }
       expect(evs.at(-1)).toMatchObject({ state: 'canceled' });
       expect(s.methods()).toContain('tasks/cancel');
     });

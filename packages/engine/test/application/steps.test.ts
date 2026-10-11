@@ -223,11 +223,13 @@ describe('step outcomes', () => {
 
   it('turns an unreachable agent into a failed step instead of throwing', async () => {
     const { h, run } = await started();
+    // Nothing left the machine (`dispatched: false`), so it is retried and then reported as a plain failure.
     h.p.gateway.send = () => {
-      throw new Error('Cannot reach author');
+      throw Object.assign(new Error('Cannot reach author'), { dispatched: false });
     };
     const r = await h.engine.steps.delegate({ runId: run.id, phaseId: 'draft', agent, text: 'x' });
     expect(r).toMatchObject({ status: 'failed', error: 'Cannot reach author' });
+    expect(r.uncertain).toBeUndefined();
     expect((await h.p.store.steps.get(r.step.id))!.value.status).toBe('failed');
   });
 

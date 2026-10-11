@@ -657,3 +657,69 @@ describe('signed agent cards', () => {
     ).rejects.toMatchObject({ code: 'untrusted_card' });
   });
 });
+
+const drain = async (it: AsyncIterable<unknown>) => {
+  for await (const e of it) void e;
+};
+
+describe('durable sends', () => {
+  it('sends the messageId the caller fixed, so a repeat of the same send is recognisable', async () => {
+    const agent = await startAgent();
+    const bodies: unknown[] = [];
+    const g = gw({ tap: (e) => e.kind === 'request' && bodies.push(e.body) });
+    agent.release();
+    await drain(g.send(external(agent.url), { text: 'x', messageId: 'msg_step_1_0' }));
+    expect(JSON.stringify(bodies)).toContain('msg_step_1_0');
+  });
+
+  it('says nothing was sent when the agent cannot be reached at all', async () => {
+    const g = gw({ requestTimeoutMs: 2000 });
+    const err = await (async () => {
+      try {
+        await drain(g.send(external('http://127.0.0.1:1'), { text: 'x' }));
+      } catch (e) {
+        return e as { code: string; dispatched?: boolean };
+      }
+    })();
+    expect(err?.code).toBe('unreachable');
+    expect(err?.dispatched).toBe(false);
+  });
+
+  it('says the request may have left when the stream breaks after it was sent', async () => {
+    const server = createHttpServer((req, res) => {
+      if (req.url?.includes('agent-card')) {
+        res.setHeader('content-type', 'application/json');
+        res.end(
+          JSON.stringify({
+            name: 'x',
+            description: 'x',
+            version: '1',
+            capabilities: { streaming: true },
+            defaultInputModes: ['text/plain'],
+            defaultOutputModes: ['text/plain'],
+            skills: [],
+            supportedInterfaces: [
+              {
+                url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/a2a/jsonrpc`,
+                protocolBinding: 'JSONRPC',
+                protocolVersion: '1.0',
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      req.socket.destroy(); // the request arrived, then the connection died
+    });
+    const port = await listen(server);
+    const g = gw();
+    const err = await (async () => {
+      try {
+        await drain(g.send(external(`http://127.0.0.1:${port}`), { text: 'x' }));
+      } catch (e) {
+        return e as { dispatched?: boolean };
+      }
+    })();
+    expect(err?.dispatched).toBe(true);
+  });
+});

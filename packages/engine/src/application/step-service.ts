@@ -2,7 +2,8 @@ import type { ActorRef, Artifact, Step, StepStatus, Usage } from '@kramahq/contr
 import { DomainError } from '../domain/errors.js';
 import type { DomainEvent } from '../domain/events.js';
 import { assertBackendAllowed, assertWithinBudget } from '../domain/invariants.js';
-import type { AgentRef, GatewayEvent } from '../ports/index.js';
+import { createHash } from 'node:crypto';
+import type { AgentRef, DispatchAware, GatewayEvent, TaskSnapshot } from '../ports/index.js';
 import type { BudgetService } from './budget-service.js';
 import type { DecisionService } from './decision-service.js';
 import { findPhase, loadRun, nowIso, publish, runEvent, transcribe, type Ctx } from './context.js';
@@ -38,9 +39,33 @@ export interface DelegateResult {
   /** Set when the delegation failed, timed out or could not reach the agent. */
   error?: string;
   usage: Usage[];
-  /** True when an earlier completed step with the same key was returned and no agent was contacted. */
+  /** True when an earlier step with the same key was returned and no agent was contacted. */
   cached?: boolean;
+  /**
+   * Set when the message may or may not have reached the agent. It was not sent again and will not be: check the agent
+   * (or the step's task) before deciding to ask again.
+   */
+  uncertain?: boolean;
 }
+
+export interface DeliveryPolicy {
+  /** Tries after the first when nothing had left yet (an address that did not answer). Default 3. */
+  retries: number;
+  /** First wait before such a retry, doubled each time. Default 250 ms. */
+  backoffMs: number;
+  /** Times a dropped stream is followed again with `SubscribeToTask`. Default 3. */
+  reattach: number;
+  sleep: (ms: number) => Promise<void>;
+}
+
+const DEFAULT_DELIVERY: DeliveryPolicy = {
+  retries: 3,
+  backoffMs: 250,
+  reattach: 3,
+  sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+};
+
+const TERMINAL = new Set<StepStatus>(['completed', 'failed', 'canceled', 'timed_out']);
 
 /** Upper bound on consecutive access requests inside one delegation, so a misbehaving agent cannot loop forever. */
 const MAX_ACCESS_ROUNDS = 10;
@@ -57,7 +82,12 @@ export class StepService {
     private readonly c: Ctx,
     private readonly budget: BudgetService,
     private readonly decisions: DecisionService,
-  ) {}
+    delivery: Partial<DeliveryPolicy> = {},
+  ) {
+    this.delivery = { ...DEFAULT_DELIVERY, ...delivery };
+  }
+
+  private readonly delivery: DeliveryPolicy;
 
   async delegate(input: DelegateInput): Promise<DelegateResult> {
     const { c } = this;
@@ -66,9 +96,23 @@ export class StepService {
     const actor: ActorRef = { type: 'agent', id: input.agent.id, name: input.agent.role };
 
     if (input.key) {
-      const done = (await c.p.store.steps.listByRun(input.runId)).find(
-        (x) => x.key === input.key && x.status === 'completed',
+      const same = (await c.p.store.steps.listByRun(input.runId)).filter(
+        (x) => x.key === input.key,
       );
+      // A send whose outcome is unknown is reported again, never repeated: the agent may already be doing the work.
+      const unsure = same.find((x) => x.a2a.delivery === 'uncertain');
+      if (unsure)
+        return {
+          step: unsure,
+          status: unsure.status,
+          answer: '',
+          artifacts: [],
+          error: uncertainText(unsure.agent.role),
+          usage: unsure.usage ?? [],
+          cached: true,
+          uncertain: true,
+        };
+      const done = same.find((x) => x.status === 'completed');
       if (done) {
         const arts = (await c.p.artifacts.listByRun(input.runId)).filter(
           (a) => a.stepId === done.id,
@@ -167,8 +211,10 @@ export class StepService {
     const artifacts: Artifact[] = [];
     const answer: string[] = [];
     const usage: Usage[][] = [];
+    const seen = new Set<string>();
     let question: string | undefined;
     let error: string | undefined;
+    let uncertain = false;
     let status = 'working' as StepStatus;
     const dec = new TextDecoder();
 
@@ -189,6 +235,23 @@ export class StepService {
         ...data,
       },
     });
+    const k = {
+      step: () => step,
+      saveStep,
+      emit,
+      activity,
+      actor,
+      input,
+      artifacts,
+      answer,
+      usage,
+      seen,
+      dec,
+      setQuestion: (q: string) => (question = q),
+      setStatus: (s: StepStatus) => (status = s),
+      setError: (m: string) => (error = m),
+      setAccess: (r: { path: string; mode?: 'read' | 'write' }) => (accessRequest = r),
+    };
 
     let text = input.text;
     let contextId = input.contextId;
@@ -196,33 +259,24 @@ export class StepService {
     try {
       for (let round = 0; ; round++) {
         accessRequest = undefined;
-        for await (const e of gateway.send(input.agent, {
-          text,
-          ...(contextId ? { contextId } : {}),
-          ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
-          ...(input.signal ? { signal: input.signal } : {}),
-          correlation: {
-            runId: input.runId,
-            ...(input.phaseId ? { phaseId: input.phaseId } : {}),
-            stepId: step.id,
-          },
-        })) {
-          await this.handle(e, {
-            step: () => step,
-            saveStep,
-            emit,
-            activity,
-            actor,
-            input,
-            artifacts,
-            answer,
-            usage,
-            dec,
-            setQuestion: (q) => (question = q),
-            setStatus: (s) => (status = s),
-            setError: (m) => (error = m),
-            setAccess: (r) => (accessRequest = r),
-          });
+        // The message gets its id, and the step records it, before anything is sent. If the process dies after this
+        // point the step says "pending", which a restart reads as "may have left" and so never sends again.
+        const messageId = `msg_${step.id}_${round}`;
+        await saveStep({ a2a: { ...step.a2a, messageId, delivery: 'pending' } });
+        await transcribe(c, {
+          runId: input.runId,
+          actor: { type: 'orchestrator', id: 'orchestrator' },
+          kind: 'message.dispatch',
+          source: 'system',
+          phaseId: input.phaseId,
+          stepId: step.id,
+          sourceEventId: `step:${step.id}:dispatch:${round}`,
+          payload: { messageId, to: { id: input.agent.id, role: input.agent.role } },
+        });
+        const outcome = await this.converse(k, { text, contextId, messageId });
+        if (outcome === 'uncertain') {
+          uncertain = true;
+          break;
         }
         // An agent asking to touch a path outside its workspace is not a question for the orchestrator: the
         // platform asks a person, then lets the same delegation carry on with the answer.
@@ -246,6 +300,10 @@ export class StepService {
     } catch (e) {
       status = 'failed';
       error = (e as Error).message;
+    }
+    if (uncertain) {
+      status = 'failed';
+      error = uncertainText(step.agent.role);
     }
 
     // A stream that ended while the step was still `working` and produced no final state counts as failed.
@@ -292,8 +350,136 @@ export class StepService {
       artifacts,
       ...(question ? { question } : {}),
       ...(error ? { error } : {}),
+      ...(uncertain ? { uncertain: true } : {}),
       usage: aggregateUsage(usage),
     };
+  }
+
+  /**
+   * One message to the agent and everything that comes back, through the one `handle` path. Returns `uncertain` when the
+   * message may have left and nothing came back: that is recorded and never resent. A failure before anything left is
+   * retried with backoff under the same `messageId`. A stream that drops after the agent answered is followed again
+   * with `SubscribeToTask`, which only watches, and then checked with `GetTask`.
+   */
+  private async converse(
+    k: Session,
+    msg: { text: string; contextId: string | undefined; messageId: string },
+  ): Promise<'done' | 'uncertain'> {
+    const { c } = this;
+    const gateway = c.p.gateway!;
+    const { input } = k;
+    const policy = this.delivery;
+    let heard = false;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        for await (const e of gateway.send(input.agent, {
+          text: msg.text,
+          messageId: msg.messageId,
+          ...(msg.contextId ? { contextId: msg.contextId } : {}),
+          ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+          ...(input.signal ? { signal: input.signal } : {}),
+          correlation: {
+            runId: input.runId,
+            ...(input.phaseId ? { phaseId: input.phaseId } : {}),
+            stepId: k.step().id,
+          },
+        })) {
+          if (!heard) {
+            heard = true;
+            await k.saveStep({ a2a: { ...k.step().a2a, delivery: 'sent' } });
+          }
+          await this.handle(e, k);
+        }
+        return 'done';
+      } catch (err) {
+        if (!heard) {
+          const notSent = (err as DispatchAware).dispatched === false;
+          if (notSent && isUnreachable(err) && attempt < policy.retries) {
+            await policy.sleep(policy.backoffMs * 2 ** attempt);
+            continue;
+          }
+          if (notSent) throw err;
+          await this.markUncertain(k, msg.messageId, err);
+          return 'uncertain';
+        }
+        // The agent answered and the stream then broke: watch the task again instead of sending anything.
+        await this.follow(k, err);
+        return 'done';
+      }
+    }
+  }
+
+  /** Records that the outcome of a send is unknown. The step is not retried; the reason stays on the transcript. */
+  private async markUncertain(k: Session, messageId: string, err: unknown): Promise<void> {
+    await k.saveStep({ a2a: { ...k.step().a2a, delivery: 'uncertain' } });
+    await transcribe(this.c, {
+      runId: k.input.runId,
+      actor: { type: 'orchestrator', id: 'orchestrator' },
+      kind: 'message.uncertain',
+      source: 'system',
+      phaseId: k.input.phaseId,
+      stepId: k.step().id,
+      sourceEventId: `step:${k.step().id}:uncertain:${messageId}`,
+      payload: { messageId, reason: (err as Error).message ?? String(err) },
+    });
+  }
+
+  /**
+   * After a dropped stream: `SubscribeToTask` (observes, never sends), then `GetTask` to settle what the stream missed.
+   * Gives up quietly; a step left `working` is failed by the caller with the usual message.
+   */
+  private async follow(k: Session, cause: unknown): Promise<void> {
+    const { c } = this;
+    const gateway = c.p.gateway!;
+    const { input } = k;
+    const policy = this.delivery;
+    const settled = () => TERMINAL.has(k.step().status) || k.step().status === 'input_required';
+    for (let attempt = 0; attempt < policy.reattach && !settled(); attempt++) {
+      const taskId = k.step().a2a.taskId;
+      if (!taskId) throw cause;
+      await transcribe(c, {
+        runId: input.runId,
+        actor: { type: 'orchestrator', id: 'orchestrator' },
+        kind: 'task.reattach',
+        source: 'system',
+        phaseId: input.phaseId,
+        stepId: k.step().id,
+        payload: { taskId, attempt: attempt + 1, reason: (cause as Error).message },
+      });
+      try {
+        for await (const e of gateway.subscribe(input.agent, taskId, {
+          ...(input.signal ? { signal: input.signal } : {}),
+          ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+        }))
+          await this.handle(e, k);
+      } catch (err) {
+        if ((err as { code?: string }).code === 'task_not_found') {
+          k.setStatus('failed');
+          k.setError('The agent no longer knows this task');
+          await k.saveStep({ status: 'failed' });
+          return;
+        }
+        await policy.sleep(policy.backoffMs * 2 ** attempt);
+      }
+      if (settled()) break;
+      const snap = await gateway.getTask(input.agent, taskId).catch(() => undefined);
+      if (snap) await this.adopt(k, snap);
+    }
+  }
+
+  /** Applies what the agent says a task looks like now, through the same path as a live event. */
+  private async adopt(k: Session, snap: TaskSnapshot): Promise<void> {
+    for (const a of snap.artifacts) await this.handle(a, k);
+    await this.handle(
+      {
+        kind: 'state',
+        state: snap.state,
+        taskId: snap.taskId,
+        ...(snap.contextId ? { contextId: snap.contextId } : {}),
+        ...(snap.text ? { text: snap.text } : {}),
+      },
+      k,
+    );
   }
 
   /**
@@ -381,49 +567,137 @@ export class StepService {
     );
   }
 
-  /** After a crash: steps still `working` or `queued` have no live agent behind them. Mark them failed so they can be retried. */
+  /**
+   * After a crash: steps still `working` or `queued` have no live caller behind them. Each is settled from what is known,
+   * and nothing is ever sent again:
+   * - the message was never confirmed (`pending`, or no task id): it may have left, so the step is `uncertain`;
+   * - the agent still knows the task (`GetTask`): a finished task is taken over (state and artifacts), one still running
+   *   is canceled so it does not keep spending unattended, and the step is failed so it can be retried on purpose;
+   * - the agent does not know the task, or cannot be reached: the step is failed.
+   * A step that is already finished is left as it is.
+   */
   async failOrphaned(runId: string, reason = 'Interrupted by a restart'): Promise<string[]> {
     const { c } = this;
     const ids: string[] = [];
     for (const s of await c.p.store.steps.listByRun(runId)) {
       if (s.status !== 'working' && s.status !== 'queued') continue;
-      const cur = await c.p.store.steps.get(s.id);
-      await c.p.store.steps.put({ ...s, status: 'failed', endedAt: nowIso(c) }, cur?.version);
+      ids.push(s.id);
+      const run = (await c.p.store.runs.get(runId))?.value.run;
+      const ref = c.p.agents?.ref(s.agent.id);
+      const gateway = c.p.gateway;
+      let step = s;
+      const save = async (patch: Partial<Step>) => {
+        step = { ...step, ...patch };
+        const cur = await c.p.store.steps.get(step.id);
+        await c.p.store.steps.put(step, cur?.version);
+      };
+      const finish = async (status: StepStatus, error: string) => {
+        await save({ status, endedAt: nowIso(c) });
+        await publish(c, [
+          {
+            type: 'step.failed',
+            subject: { type: 'step', id: s.id },
+            runId,
+            data: { stepId: s.id, phaseId: s.phaseId, status, error },
+          },
+        ]);
+      };
+
+      const taskId = s.a2a.taskId;
+      if (s.a2a.delivery !== 'sent' || !taskId) {
+        // Never confirmed: do not guess, and do not send again.
+        await save({ a2a: { ...s.a2a, delivery: 'uncertain' } });
+        await transcribe(c, {
+          runId,
+          actor: { type: 'system', id: 'engine' },
+          kind: 'message.uncertain',
+          source: 'system',
+          phaseId: s.phaseId,
+          stepId: s.id,
+          sourceEventId: `step:${s.id}:uncertain:restart`,
+          payload: { messageId: s.a2a.messageId, reason },
+        });
+        await finish('failed', uncertainText(s.agent.role));
+        continue;
+      }
+      if (!gateway || !ref || !run) {
+        await finish('failed', reason);
+        continue;
+      }
+      let snap: TaskSnapshot | undefined;
+      try {
+        snap = await gateway.getTask(ref, taskId);
+      } catch {
+        await finish('failed', `${reason}; ${s.agent.role} could not be reached`);
+        continue;
+      }
+      if (!snap) {
+        await finish('failed', `${reason}; ${s.agent.role} no longer knows the task`);
+        continue;
+      }
+      if (snap.state === 'working' || snap.state === 'input_required') {
+        await gateway.cancel(ref, taskId).catch(() => undefined);
+        await finish('failed', `${reason}; the task was still running and was canceled`);
+        continue;
+      }
+      // The agent finished while Krama was away: take its answer over.
+      const taken: Artifact[] = [];
+      const actor: ActorRef = { type: 'agent', id: s.agent.id, name: s.agent.role };
+      await this.adopt(
+        {
+          step: () => step,
+          saveStep: save,
+          emit: (ev) => publish(c, ev, actor),
+          activity: (type, data) => ({
+            type,
+            subject: { type: 'step', id: s.id },
+            runId,
+            data: { stepId: s.id, phaseId: s.phaseId, ...data },
+          }),
+          actor,
+          input: { runId, phaseId: s.phaseId, agent: ref, text: '' },
+          artifacts: taken,
+          answer: [],
+          usage: [],
+          seen: new Set(),
+          dec: new TextDecoder(),
+          setQuestion: () => undefined,
+          setStatus: () => undefined,
+          setError: () => undefined,
+          setAccess: () => undefined,
+        },
+        snap,
+      );
+      await save({ endedAt: nowIso(c) });
       await publish(c, [
         {
-          type: 'step.failed',
+          type: snap.state === 'completed' ? 'step.completed' : 'step.failed',
           subject: { type: 'step', id: s.id },
           runId,
-          data: { stepId: s.id, phaseId: s.phaseId, status: 'failed', error: reason },
+          data: { stepId: s.id, phaseId: s.phaseId, status: step.status },
         },
       ]);
-      ids.push(s.id);
     }
     return ids;
   }
 
-  private async handle(
-    e: GatewayEvent,
-    k: {
-      step: () => Step;
-      saveStep: (p: Partial<Step>) => Promise<void>;
-      emit: (ev: DomainEvent[]) => Promise<unknown>;
-      activity: (t: DomainEvent['type'], d: Record<string, unknown>) => DomainEvent;
-      actor: ActorRef;
-      input: DelegateInput;
-      artifacts: Artifact[];
-      answer: string[];
-      usage: Usage[][];
-      dec: { decode(b: Uint8Array): string };
-      setQuestion: (q: string) => void;
-      setStatus: (s: StepStatus) => void;
-      setError: (m: string) => void;
-      setAccess: (r: { path: string; mode?: 'read' | 'write' }) => void;
-    },
-  ): Promise<void> {
+  private async handle(e: GatewayEvent, k: Session): Promise<void> {
     const { c } = this;
     switch (e.kind) {
       case 'state': {
+        // A task that has finished stays finished: a late read, a replayed frame or a stale poll cannot reopen it.
+        if (TERMINAL.has(k.step().status)) {
+          await transcribe(c, {
+            runId: k.input.runId,
+            actor: { type: 'agent', id: k.step().agent.id, role: k.step().agent.role },
+            kind: 'step.state.ignored',
+            source: 'a2a-stream',
+            phaseId: k.input.phaseId,
+            stepId: k.step().id,
+            payload: { state: e.state, taskId: e.taskId, kept: k.step().status },
+          });
+          break;
+        }
         const a2a = {
           ...k.step().a2a,
           taskId: e.taskId,
@@ -473,6 +747,10 @@ export class StepService {
           e.bytes ??
           (e.data !== undefined ? new TextEncoder().encode(JSON.stringify(e.data)) : undefined);
         if (!bytes) break;
+        // Following a task again can hand back what was already received; it is stored once.
+        const digest = `${e.name}:${createHash('sha256').update(bytes).digest('hex')}`;
+        if (k.seen.has(digest)) break;
+        k.seen.add(digest);
         const art = await c.p.artifacts.put({
           runId: k.input.runId,
           phaseId: k.input.phaseId,
@@ -559,5 +837,30 @@ function relaySubject(k: { step: () => Step; input: DelegateInput }): IngestSubj
     channel: 'a2a',
   };
 }
+
+/** Everything one delegation shares while its events are handled. */
+interface Session {
+  step: () => Step;
+  saveStep: (p: Partial<Step>) => Promise<void>;
+  emit: (ev: DomainEvent[]) => Promise<unknown>;
+  activity: (t: DomainEvent['type'], d: Record<string, unknown>) => DomainEvent;
+  actor: ActorRef;
+  input: DelegateInput;
+  artifacts: Artifact[];
+  answer: string[];
+  usage: Usage[][];
+  /** Artifacts already stored for this step, by name and content hash. */
+  seen: Set<string>;
+  dec: { decode(b: Uint8Array): string };
+  setQuestion: (q: string) => void;
+  setStatus: (s: StepStatus) => void;
+  setError: (m: string) => void;
+  setAccess: (r: { path: string; mode?: 'read' | 'write' }) => void;
+}
+
+const uncertainText = (role: string): string =>
+  `The message to ${role} may or may not have arrived, and it was not sent again. Check what ${role} is doing before asking again.`;
+
+const isUnreachable = (e: unknown): boolean => (e as { code?: string }).code === 'unreachable';
 
 export { runEvent };

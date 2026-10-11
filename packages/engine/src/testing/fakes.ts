@@ -569,7 +569,7 @@ export type GatewayTurn =
 
 /** Scripted agent: replays the turns queued for a role, so a run can complete with no real backend. */
 export class FakeAgentGateway implements AgentGateway {
-  readonly sent: { agent: AgentRef; text: string; contextId?: string }[] = [];
+  readonly sent: { agent: AgentRef; text: string; contextId?: string; messageId?: string }[] = [];
   readonly canceled: string[] = [];
   constructor(private readonly script: Record<string, GatewayTurn[]> = {}) {}
   queue(role: string, ...turns: GatewayTurn[]): void {
@@ -580,6 +580,7 @@ export class FakeAgentGateway implements AgentGateway {
       agent,
       text: message.text,
       ...(message.contextId ? { contextId: message.contextId } : {}),
+      ...(message.messageId ? { messageId: message.messageId } : {}),
     });
     const turn = this.script[agent.role]?.shift() ?? [
       { kind: 'state', state: 'completed', taskId: `task_${agent.role}` },

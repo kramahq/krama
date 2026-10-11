@@ -52,6 +52,10 @@ const server = createServer((req, res) => {
     healthy = true;
     return json(200, { healthy });
   }
+  if (req.url === '/debug/crash') {
+    res.once('finish', () => setImmediate(() => process.exit(1)));
+    return json(200, { crashing: true });
+  }
   return json(404, { error: 'not found' });
 });
 

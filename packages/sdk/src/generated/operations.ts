@@ -2742,7 +2742,13 @@ export interface OperationTypes {
           | 'failed'
           | 'canceled'
           | 'timed_out';
-        a2a: { taskId?: string; contextId?: string; resumed: boolean };
+        a2a: {
+          taskId?: string;
+          contextId?: string;
+          resumed: boolean;
+          messageId?: string;
+          delivery?: 'pending' | 'sent' | 'uncertain';
+        };
         startedAt?: string;
         endedAt?: string;
         cost?: { amount: number; currency: 'USD' } | null;

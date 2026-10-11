@@ -94,6 +94,13 @@ export const step = z.object({
     taskId: z.string().optional(),
     contextId: z.string().optional(),
     resumed: z.boolean(),
+    /** The A2A `messageId` of the message that started this step, fixed before it is sent. */
+    messageId: z.string().optional(),
+    /**
+     * Whether the agent has the message. `pending`: recorded, not yet sent. `sent`: the agent answered. `uncertain`: the
+     * request may have left and no answer came; it is never sent again automatically.
+     */
+    delivery: z.enum(['pending', 'sent', 'uncertain']).optional(),
   }),
   startedAt: iso.optional(),
   endedAt: iso.optional(),
