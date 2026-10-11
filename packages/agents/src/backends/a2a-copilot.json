@@ -6,7 +6,7 @@
   "package": {
     "name": "a2a-copilot",
     "bin": "a2a-copilot",
-    "install": "npm i -g a2a-copilot",
+    "install": "npm i -g a2a-copilot@1.8.2",
     "docs": "https://a2a-wrapper.allsrc.dev",
     "minVersion": "1.8.2"
   },
@@ -107,10 +107,11 @@
       "description": "a2a-copilot is installed",
       "kind": "binary",
       "check": {
-        "command": ["a2a-copilot", "--version"]
+        "command": ["a2a-copilot", "--version"],
+        "expect": "^1\\.8\\.2$"
       },
       "install": {
-        "any": "npm i -g a2a-copilot"
+        "any": "npm i -g a2a-copilot@1.8.2"
       }
     },
     {

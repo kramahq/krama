@@ -6,7 +6,7 @@
   "package": {
     "name": "a2a-antigravity",
     "bin": "a2a-antigravity",
-    "install": "npm i -g a2a-antigravity",
+    "install": "npm i -g a2a-antigravity@0.2.2",
     "docs": "https://a2a-wrapper.allsrc.dev",
     "minVersion": "0.2.2"
   },
@@ -125,10 +125,11 @@
       "description": "a2a-antigravity is installed",
       "kind": "binary",
       "check": {
-        "command": ["a2a-antigravity", "--version"]
+        "command": ["a2a-antigravity", "--version"],
+        "expect": "^0\\.2\\.2$"
       },
       "install": {
-        "any": "npm i -g a2a-antigravity"
+        "any": "npm i -g a2a-antigravity@0.2.2"
       }
     },
     {
