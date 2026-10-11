@@ -14,9 +14,10 @@ import { definition } from './fixtures/descriptor.js';
 /**
  * Real-wrapper smoke test. Costs a few tokens, so it never runs in default CI.
  *
- *   KRAMA_SMOKE=1 KRAMA_SMOKE_BACKEND=a2a-claude ANTHROPIC_API_KEY=... pnpm -F @kramahq/agents test smoke
+ *   KRAMA_SMOKE=1 KRAMA_SMOKE_BACKEND=a2a-codex pnpm -F @kramahq/agents test -- smoke
  *
- * The wrapper must be installed (`npm i -g a2a-claude`); `krama doctor` checks this.
+ * Install the exact wrapper version shown in its backend descriptor. Codex accepts either
+ * OPENAI_API_KEY or `codex login`; Copilot accepts `GITHUB_TOKEN` or an authenticated `gh` CLI.
  */
 const enabled = process.env.KRAMA_SMOKE === '1';
 const backend = process.env.KRAMA_SMOKE_BACKEND ?? 'a2a-claude';
@@ -46,7 +47,15 @@ describe.skipIf(!enabled)(`smoke: ${backend}`, () => {
         backend: {
           wrapper: backend,
           ...(process.env.KRAMA_SMOKE_MODEL ? { model: process.env.KRAMA_SMOKE_MODEL } : {}),
-          options: backend === 'a2a-codex' ? { skipGitRepoCheck: true } : {},
+          options:
+            backend === 'a2a-codex'
+              ? {
+                  skipGitRepoCheck: true,
+                  ...(process.env.KRAMA_SMOKE_CODEX_PATH
+                    ? { codexPathOverride: process.env.KRAMA_SMOKE_CODEX_PATH }
+                    : {}),
+                }
+              : {},
         },
       },
     );

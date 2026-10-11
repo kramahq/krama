@@ -64,6 +64,11 @@ describe('built-in backends', () => {
         d.id,
       ).toBe(true);
       expect(d.package.install, d.id).toContain(d.package.name);
+      expect(d.package.install, d.id).toContain(`@${d.package.minVersion}`);
+      const wrapperCheck = d.prerequisites.find((p) => p.id === 'wrapper');
+      const versionPattern =
+        wrapperCheck && 'command' in wrapperCheck.check ? wrapperCheck.check.expect : undefined;
+      expect(versionPattern, d.id).toBe(`^${d.package.minVersion!.replaceAll('.', '\\.')}$`);
     }
   });
 
@@ -74,6 +79,7 @@ describe('built-in backends', () => {
       systemPrompt: 'systemPromptAppend',
     });
     expect(by('a2a-codex').mapping.systemPrompt).toBe('developerInstructions');
+    expect(by('a2a-codex').env.find((v) => v.name === 'OPENAI_API_KEY')?.required).toBe(false);
     expect(by('a2a-copilot').mapping).toMatchObject({
       workspace: 'workspaceDirectory',
       systemPrompt: 'systemPrompt',
@@ -393,7 +399,7 @@ describe('doctor', () => {
   it('passes when everything is present', async () => {
     const r = await checkBackend(
       reg.get('a2a-claude')!,
-      prober({ node: true, 'a2a-claude': true }, { node: 'v22.1.0' }),
+      prober({ node: true, 'a2a-claude': true }, { node: 'v22.1.0', 'a2a-claude': '0.4.1' }),
       { env: { ANTHROPIC_API_KEY: 'k' } },
     );
     expect(r.ok).toBe(true);
@@ -402,7 +408,10 @@ describe('doctor', () => {
   it('fails with an OS-specific fix when the wrapper or runtime is missing', async () => {
     const r = await checkBackend(
       reg.get('a2a-antigravity')!,
-      prober({ node: true, 'a2a-antigravity': false, python3: false }, { node: 'v22.1.0' }),
+      prober(
+        { node: true, 'a2a-antigravity': false, python3: false },
+        { node: 'v22.1.0', 'a2a-antigravity': '0.2.2' },
+      ),
       { platform: 'win32' },
     );
     expect(r.ok).toBe(false);
@@ -410,7 +419,9 @@ describe('doctor', () => {
       ok: false,
       fix: 'winget install Python.Python.3.12',
     });
-    expect(r.items.find((i) => i.id === 'wrapper')?.fix).toBe('npm i -g a2a-antigravity');
+    expect(r.items.find((i) => i.id === 'wrapper')?.fix).toBe(
+      'npm i -g a2a-antigravity@0.2.2',
+    );
   });
 
   it('rejects a Node that is too old and a Python that is too old', async () => {
@@ -418,7 +429,7 @@ describe('doctor', () => {
       reg.get('a2a-antigravity')!,
       prober(
         { node: true, 'a2a-antigravity': true, python3: true },
-        { node: 'v18.0.0', python3: 'Python 3.9.1' },
+        { node: 'v18.0.0', python3: 'Python 3.9.1', 'a2a-antigravity': '0.2.2' },
       ),
     );
     expect(
@@ -432,7 +443,7 @@ describe('doctor', () => {
   it('probes a service by URL and treats optional prerequisites as non-blocking', async () => {
     const down = await checkBackend(
       reg.get('a2a-opencode')!,
-      prober({ node: true, 'a2a-opencode': true }, { node: 'v22.0.0' }),
+      prober({ node: true, 'a2a-opencode': true }, { node: 'v22.0.0', 'a2a-opencode': '1.7.2' }),
     );
     expect(down.ok).toBe(false);
     expect(down.items.find((i) => i.id === 'server')?.ok).toBe(false);
@@ -440,13 +451,16 @@ describe('doctor', () => {
       reg.get('a2a-opencode')!,
       prober(
         { node: true, 'a2a-opencode': true, 'http://localhost:4096/': true },
-        { node: 'v22.0.0' },
+        { node: 'v22.0.0', 'a2a-opencode': '1.7.2' },
       ),
     );
     expect(up.ok).toBe(true);
     const copilot = await checkBackend(
       reg.get('a2a-copilot')!,
-      prober({ node: true, 'a2a-copilot': true, gh: false }, { node: 'v22.0.0' }),
+      prober(
+        { node: true, 'a2a-copilot': true, gh: false },
+        { node: 'v22.0.0', 'a2a-copilot': '1.8.2' },
+      ),
     );
     expect(copilot.ok).toBe(true); // gh is optional (a token works instead)
   });
