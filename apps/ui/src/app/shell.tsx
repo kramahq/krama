@@ -268,6 +268,14 @@ export function Shell() {
           </Button>
           <Brand />
         </header>
+        {import.meta.env.VITE_KRAMA_DEMO === '1' && (
+          <div
+            role="status"
+            className="border-b border-warn/30 bg-warn/10 px-4 py-2 text-xs text-ink2"
+          >
+            Demo workspace · Sample data. Starting a run here does not launch real agents.
+          </div>
+        )}
         <main id="main" className="min-h-0 flex-1 overflow-y-auto scroll-thin">
           <Outlet />
         </main>

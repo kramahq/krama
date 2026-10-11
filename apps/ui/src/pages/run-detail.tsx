@@ -145,7 +145,7 @@ function PhaseList({ phases, runStatus }: { phases: readonly Phase[]; runStatus:
   );
 }
 
-/** What the platform enforces on this run, whatever the orchestrator does. Only things the API actually tells us. */
+/** Recorded settings. Enforcement and live agent setup must not be inferred from configuration alone. */
 function Guardrails({ run }: { run: Run }) {
   const allowed = useAllowedBackends();
   const backends = (allowed.data?.items ?? [])
@@ -162,26 +162,26 @@ function Guardrails({ run }: { run: Run }) {
   );
   const ic = <ShieldCheck className="size-3.5 text-ink3" aria-hidden />;
   return (
-    <div
-      className="flex flex-wrap items-center gap-1.5"
-      aria-label="Guardrails enforced by the platform"
-    >
-      <span className="mr-1 text-[11px] tracking-wide text-ink3 uppercase">
-        Enforced by the platform
-      </span>
+    <div className="flex flex-wrap items-center gap-1.5" aria-label="Run controls and policy">
+      <span className="mr-1 text-[11px] tracking-wide text-ink3 uppercase">Run controls</span>
       {chip(
         ic,
-        `Budget cap $${run.budget.max.amount} · ${run.budget.onExceed === 'pause' ? 'pauses' : 'stops'} when reached`,
+        `Budget cap $${run.budget.max.amount} · ${run.budget.onExceed === 'pause' ? 'pauses' : 'stops'} on reported spend`,
         'cap',
       )}
       {chip(
         ic,
         run.mode === 'review'
-          ? 'Review mode: a person approves before it completes'
-          : 'Autopilot: no final approval',
+          ? 'Review: pack reviews and requested decisions'
+          : 'Autopilot: required decisions still pause',
         'mode',
       )}
-      {backends.length > 0 && chip(ic, `Allowed backends: ${backends.join(', ')}`, 'be')}
+      {backends.length > 0 && chip(ic, `Backend policy: ${backends.join(', ')}`, 'be')}
+      <p className="m-0 basis-full text-xs text-ink3">
+        {run.mode === 'review' && 'Final human approval is not guaranteed yet. '}
+        {run.orchestrator.delegation === 'native' &&
+          'Native calls may already be in progress when reported spend reaches the cap.'}
+      </p>
     </div>
   );
 }

@@ -63,6 +63,13 @@ const clone = <T>(v: T): T => structuredClone(v);
 export function createState(): MockState {
   const capabilities = fixture<Capabilities>('capabilities.json');
   const template = fixture<BackendDescriptor>('backend-descriptor.json');
+  const versions: Record<string, string> = {
+    'a2a-claude': '0.4.1',
+    'a2a-codex': '1.7.2',
+    'a2a-copilot': '1.8.2',
+    'a2a-opencode': '1.7.2',
+    'a2a-antigravity': '0.2.2',
+  };
   const backends = capabilities.backends.map((b): BackendDescriptor => ({
     ...template,
     id: b.wrapper,
@@ -70,7 +77,12 @@ export function createState(): MockState {
     providerKey: b.wrapper.replace(/^a2a-/, ''),
     models: b.models,
     origin: 'builtin',
-    package: { name: b.wrapper, bin: b.wrapper, install: `npm i -g ${b.wrapper}` },
+    package: {
+      name: b.wrapper,
+      bin: b.wrapper,
+      install: `npm i -g ${b.wrapper}${versions[b.wrapper] ? `@${versions[b.wrapper]}` : ''}`,
+      ...(versions[b.wrapper] ? { minVersion: versions[b.wrapper] } : {}),
+    },
     capabilities: { ...template.capabilities, canOrchestrate: b.canOrchestrate },
   }));
   return {

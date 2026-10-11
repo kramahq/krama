@@ -31,7 +31,7 @@ const children = [
   spawn(process.execPath, [vite, '--host', '127.0.0.1'], {
     cwd: uiDir,
     stdio: 'inherit',
-    env: { ...process.env, KRAMA_API: `http://127.0.0.1:${port}` },
+    env: { ...process.env, KRAMA_API: `http://127.0.0.1:${port}`, VITE_KRAMA_DEMO: '1' },
   }),
 ];
 

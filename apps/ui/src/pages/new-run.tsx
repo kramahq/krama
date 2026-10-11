@@ -1,14 +1,17 @@
 import { useNavigate } from '@tanstack/react-router';
-import type { Pack } from '@kramahq/contract';
+import type { DelegationMode, Pack } from '@kramahq/contract';
 import { Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useCreateRun, usePacks } from '@/api/queries';
 import { ALL_PROJECTS, useProject } from '@/app/project';
 import { TeamPanel } from '@/components/team-panel';
+import { PackInputs } from '@/components/pack-inputs';
+import { BackendSetup } from '@/components/backend-setup';
 import { Badge, Button, Card, PageHeader, Segmented, Skeleton } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/cn';
 import { formatSpend } from '@/lib/format';
+import { inputModel, readInputs, type InputDraft } from '@/lib/pack-inputs';
 
 /** History only: what runs of this pack have cost, as the providers reported it. No history, nothing is shown. */
 function typical(p: Pack): string | undefined {
@@ -22,7 +25,7 @@ export function NewRunPage() {
   const toast = useToast();
   const packs = usePacks();
   const create = useCreateRun();
-  const { selected, project, projects } = useProject();
+  const { selected, projects } = useProject();
 
   const installed = useMemo(
     () =>
@@ -31,32 +34,51 @@ export function NewRunPage() {
       ),
     [packs.data],
   );
-  const suggestedId = project?.defaultPackId ?? installed[0]?.id;
 
   const [text, setText] = useState('');
   const [packId, setPackId] = useState<string | undefined>(undefined);
   // Until you pick one here, the project is the one chosen in the sidebar.
   const [chosenProject, setProjectId] = useState<string | undefined>(undefined);
   const projectId = chosenProject ?? (selected === ALL_PROJECTS ? '' : selected);
+  const project = projects.find((p) => p.id === projectId);
+  const suggestedId =
+    installed.find((p) => p.id === project?.defaultPackId)?.id ?? installed[0]?.id;
   const [mode, setMode] = useState<'review' | 'autopilot'>('review');
   const [budget, setBudget] = useState<string>('');
+  const [delegation, setDelegation] = useState<DelegationMode>('native');
+  const [drafts, setDrafts] = useState<Record<string, InputDraft>>({});
 
   // Until you choose, the pack is the suggestion: the project's default.
   const chosenId = packId ?? suggestedId;
   const pack = installed.find((p) => p.id === chosenId);
+  const graph = !!pack?.orchestrator && !!pack.agents;
+  const effectiveDelegation = graph ? 'native' : delegation;
+  const inputKey = pack ? `${pack.id}@${pack.version}` : '';
+  const model = useMemo(() => inputModel(pack?.inputsSchema ?? {}), [pack?.inputsSchema]);
+  const draft = drafts[inputKey] ?? {};
+  const inputs = readInputs(model, draft);
 
   const cap = Number(budget);
   const budgetOk = budget === '' || (Number.isFinite(cap) && cap > 0);
-  const ready = text.trim().length > 0 && !!pack && budgetOk;
+  const ready =
+    text.trim().length > 0 &&
+    !!pack &&
+    pack.engine.compatible &&
+    budgetOk &&
+    inputs.errors.length === 0;
 
   function start() {
-    if (!pack) return;
+    if (!pack || !ready || create.isPending) return;
     create.mutate(
       {
         packId: pack.id,
-        input: { text: text.trim() },
+        input: {
+          text: text.trim(),
+          ...(Object.keys(inputs.params).length ? { params: inputs.params } : {}),
+        },
         title: text.trim().split('\n')[0]!.slice(0, 80),
         mode,
+        orchestrator: { delegation: effectiveDelegation },
         ...(projectId ? { projectId: projectId as never } : {}),
         ...(budget !== '' ? { budget: { max: cap } } : {}),
       },
@@ -87,13 +109,32 @@ export function NewRunPage() {
             />
           </label>
 
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">Project</span>
+            <select
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="h-9 rounded-lg border border-line2 bg-raised px-2.5 text-sm"
+            >
+              <option value="">No project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
             <legend className="mb-1 flex items-center gap-2 text-sm font-medium">
               Pack
               {!packId && suggestedId && (
                 <span className="inline-flex items-center gap-1 text-xs font-normal text-ink3">
                   <Sparkles className="size-3" aria-hidden /> suggested
-                  {project ? ` as the default for ${project.name}` : ''}
+                  {project && project.defaultPackId === suggestedId
+                    ? ` as the default for ${project.name}`
+                    : project?.defaultPackId
+                      ? ' · project default is not installed'
+                      : ' · first installed pack'}
                 </span>
               )}
             </legend>
@@ -137,23 +178,22 @@ export function NewRunPage() {
               </div>
             )}
           </fieldset>
+          {pack && (
+            <PackInputs
+              model={model}
+              draft={draft}
+              errors={inputs.errors}
+              onChange={(next) => setDrafts((current) => ({ ...current, [inputKey]: next }))}
+            />
+          )}
+          {pack && !pack.engine.compatible && (
+            <p role="alert" className="text-sm text-bad">
+              This pack requires a different engine version. Update the pack or server before
+              starting.
+            </p>
+          )}
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium">Project</span>
-              <select
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="h-9 rounded-lg border border-line2 bg-raised px-2.5 text-sm"
-              >
-                <option value="">No project</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium">Mode</span>
               <Segmented
@@ -183,9 +223,30 @@ export function NewRunPage() {
           </div>
           <p className="m-0 text-xs text-ink3">
             {mode === 'review'
-              ? 'In review mode a person approves before the run completes, and at any gate the agents ask for.'
-              : 'In autopilot the agents carry on without asking for review. Approvals that are required still stop and wait.'}
+              ? 'Review pauses for the pack’s required reviews and decisions requested by agents. A final human approval is not guaranteed yet.'
+              : 'Autopilot skips optional reviews. Required decisions still pause the run.'}
           </p>
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium">Delegation</span>
+            {graph ? (
+              <p className="m-0 text-sm text-ink2">Native agent calls · required by this pack</p>
+            ) : (
+              <Segmented
+                label="Delegation"
+                value={delegation}
+                onChange={setDelegation}
+                options={[
+                  { value: 'native', label: 'Native agent calls' },
+                  { value: 'krama', label: 'Krama relay' },
+                ]}
+              />
+            )}
+            <p className="m-0 text-xs text-ink3">
+              {effectiveDelegation === 'native'
+                ? 'Agents call their assigned teammates directly. Budget limits act on reported usage; a call may already be in progress.'
+                : 'The orchestrator asks Krama to dispatch its worker calls. Krama checks the budget before dispatch.'}
+            </p>
+          </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -198,7 +259,7 @@ export function NewRunPage() {
               Start run
             </Button>
             <span className="text-xs text-ink3">
-              The orchestrator plans first. You can pause or stop at any time.
+              Starts in planning. You can pause or stop at any time.
             </span>
           </div>
         </div>
@@ -207,6 +268,7 @@ export function NewRunPage() {
           {pack ? (
             <>
               <TeamPanel pack={pack} />
+              <BackendSetup pack={pack} />
               <Card className="p-4">
                 <div className="mb-1 text-[11px] tracking-wide text-ink3 uppercase">
                   Typical for this pack

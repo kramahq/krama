@@ -419,9 +419,7 @@ describe('doctor', () => {
       ok: false,
       fix: 'winget install Python.Python.3.12',
     });
-    expect(r.items.find((i) => i.id === 'wrapper')?.fix).toBe(
-      'npm i -g a2a-antigravity@0.2.2',
-    );
+    expect(r.items.find((i) => i.id === 'wrapper')?.fix).toBe('npm i -g a2a-antigravity@0.2.2');
   });
 
   it('rejects a Node that is too old and a Python that is too old', async () => {
