@@ -16,6 +16,8 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'test/**/*.test.{ts,tsx}'],
     setupFiles: ['./test/setup.ts'],
+    // Router and jsdom interactions need more time on shared CI runners.
+    testTimeout: 30_000,
     css: false,
   },
 });

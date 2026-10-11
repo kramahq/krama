@@ -15,6 +15,10 @@ describe('system adapters', () => {
     expect(await r.resolve('missing')).toBeUndefined();
   });
   it('tells the time', () => {
-    expect(Math.abs(new SystemClock().now().getTime() - Date.now())).toBeLessThan(50);
+    const before = Date.now();
+    const actual = new SystemClock().now().getTime();
+    const after = Date.now();
+    expect(actual).toBeGreaterThanOrEqual(before);
+    expect(actual).toBeLessThanOrEqual(after);
   });
 });
