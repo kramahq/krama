@@ -429,7 +429,6 @@ export class OrchestratorRunner implements RunExecutor {
       const relayEnv = { ports, directory, subAgents: this.o.subAgents, events: undefined };
       const roles = graphRoles(relayEnv, pack) ?? [];
       mcp.tokens.revokeRun(run.id);
-      const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
       spec = await specFor(
         relayEnv,
         run,
@@ -440,8 +439,10 @@ export class OrchestratorRunner implements RunExecutor {
         {
           prompt: renderOrchestratorPrompt({ run, pack, roster: roles }),
           hints: false, // the prompt already lists the roles it can delegate to
-          mcp: entry.mcp,
-          env: entry.env,
+          governance: {
+            baseUrl: this.o.mcpBaseUrl,
+            token: mcp.tokens.issue(run.id, undefined, mode),
+          },
         },
       );
     } else if (mode === 'native') {
