@@ -18,12 +18,15 @@ import { RawBody } from './raw.js';
 import { workHandlers } from './work.js';
 import { workspaceHandlers } from './workspaces.js';
 import { artifactHandlers } from './artifacts.js';
+import { transcriptHandlers } from './transcript.js';
 import { catalogHandlers } from './catalog.js';
 import { ApiProblem, toProblem, validationProblem } from './problems.js';
 
 export interface ApiOptions {
   krama: Krama;
   config: ServerConfig;
+  /** Who the static token stands for (default: the local administrator). Tests and embedding hosts set a narrower one. */
+  principal?: Principal;
   /** Route handlers by `operationId`, layered over the platform ones. A route with none answers 501. */
   handlers?: Handlers;
   /** Check every success body against its contract schema. On in tests, off in production. */
@@ -74,7 +77,7 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
     ...(o.heartbeatMs ? { heartbeatMs: o.heartbeatMs } : {}),
     ...(o.maxStreams ? { maxStreams: o.maxStreams } : {}),
   });
-  const auth = new TokenAuth(config.token);
+  const auth = new TokenAuth(config.token, o.principal);
   const idem = o.idempotency ?? new IdempotencyStore();
   const handlers: Handlers = {
     ...platformHandlers(new Preferences(config.home)),
@@ -83,6 +86,7 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
     ...workHandlers({ autoStart: o.autoStartRuns ?? true }),
     ...workspaceHandlers(),
     ...artifactHandlers(),
+    ...transcriptHandlers(),
     ...catalogHandlers(),
     ...(o.handlers ?? {}),
   };
