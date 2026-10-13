@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { Git, GitError } from './git.js';
+import { Git, GitError, redactUrls } from './git.js';
 import { looksBinary, scanText, type SecretFinding } from './secrets.js';
 
 /** Who a commit or a tag is made by: the acting person, not whoever configured git on this machine. */
@@ -45,6 +45,13 @@ export type RepoEvent =
   | { type: 'draft.discarded'; name: string; by: Person }
   | { type: 'revision.created'; revision: Revision; by: Person }
   | { type: 'production.promoted'; from: string; to: string; revision: string; by: Person }
+  | {
+      type: 'remote.pushed';
+      remote: string;
+      pushed: string[];
+      rejected: { ref: string; reason: string }[];
+      by: Person;
+    }
   | { type: 'production.rolled_back'; to: string; sha: string; revision: string; by: Person };
 
 export interface RepoOptions {
@@ -293,6 +300,104 @@ export class Repo {
       await rm(d.dir, { recursive: true, force: true });
       this.emit({ type: 'draft.discarded', name, by });
     });
+  }
+
+  // ---- the remote ---------------------------------------------------------------------------------------------------
+
+  /** Points `name` at a remote, which is optional: a repository with none still has all its history. */
+  async setRemote(url: string, name = 'origin'): Promise<void> {
+    const have = await this.git.text(['remote'], { cwd: this.dir });
+    await this.git.run(['remote', have.split('\n').includes(name) ? 'set-url' : 'add', name, url], {
+      cwd: this.dir,
+    });
+  }
+
+  async remotes(): Promise<{ name: string; url: string }[]> {
+    const out = await this.git.text(['remote', '-v'], { cwd: this.dir });
+    const seen = new Map<string, string>();
+    for (const line of out.split('\n').filter(Boolean)) {
+      const m = /^(\S+)\t(.+?)\s+\(fetch\)$/.exec(line);
+      if (m) seen.set(m[1]!, redactUrls(m[2]!));
+    }
+    return [...seen].map(([name, url]) => ({ name, url }));
+  }
+
+  /**
+   * Sends production, drafts and revisions to a remote, with the person's own git credentials. It never forces: a branch
+   * that has diverged, or a revision whose number the remote already has for another commit, is refused for that ref,
+   * reported with git's reason, and everything else still goes. No access to the remote is an error, with git's words.
+   */
+  async push(
+    by: Person,
+    o: {
+      remote?: string;
+      production?: boolean;
+      drafts?: 'all' | readonly string[] | 'none';
+      revisions?: boolean;
+    } = {},
+  ): Promise<{
+    pushed: string[];
+    upToDate: string[];
+    rejected: { ref: string; reason: string }[];
+  }> {
+    const remote = o.remote ?? 'origin';
+    const refs: string[] = [];
+    if (o.production ?? true) refs.push(`refs/heads/${PRODUCTION}`);
+    const drafts = o.drafts ?? 'all';
+    if (drafts !== 'none')
+      for (const d of await this.drafts())
+        if (drafts === 'all' || drafts.includes(d.name))
+          refs.push(d.branch.startsWith('refs/') ? d.branch : `refs/heads/${d.branch}`);
+    if (o.revisions ?? true)
+      for (const r of await this.revisions()) refs.push(`refs/tags/${r.name}`);
+    if (refs.length === 0) return { pushed: [], upToDate: [], rejected: [] };
+
+    // Explicit `ref:ref` and never a leading `+`: that is what makes "never forced" true.
+    const specs = refs.map((r) => `${r}:${r}`);
+    const sshEnv: Record<string, string> =
+      process.env['GIT_SSH_COMMAND'] ||
+      process.env['GIT_SSH'] ||
+      (await this.git
+        .text(['config', '--get', 'core.sshCommand'], { cwd: this.dir })
+        .catch(() => ''))
+        ? {}
+        : { GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' };
+    let report: string;
+    try {
+      report = await this.git.run(['push', '--porcelain', remote, ...specs], {
+        cwd: this.dir,
+        env: sshEnv,
+      });
+    } catch (e) {
+      // A refused ref still prints its report on stdout; no report means git never got that far (no access, no remote).
+      if (!(e instanceof GitError) || !/^[ +\-*=!]\t/m.test(e.stdout)) throw e;
+      report = e.stdout;
+    }
+    const result = {
+      pushed: [] as string[],
+      upToDate: [] as string[],
+      rejected: [] as { ref: string; reason: string }[],
+    };
+    for (const line of report.split('\n')) {
+      const m = /^([ +\-*=!])\t([^:\t]+):[^\t]*\t(.*)$/.exec(line);
+      if (!m) continue;
+      const ref = m[2]!.replace(/^refs\/(heads|tags)\//, '');
+      if (m[1] === '!')
+        result.rejected.push({
+          ref,
+          reason: m[3]!.replace(/^\[rejected\]\s*/, '').replace(/^\((.*)\)$/, '$1'),
+        });
+      else if (m[1] === '=') result.upToDate.push(ref);
+      else result.pushed.push(ref);
+    }
+    this.emit({
+      type: 'remote.pushed',
+      remote,
+      pushed: result.pushed,
+      rejected: result.rejected,
+      by,
+    });
+    return result;
   }
 
   /** @internal Used by `Draft`. */

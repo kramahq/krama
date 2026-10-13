@@ -89,9 +89,15 @@ importers:
       '@kramahq/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@kramahq/git':
+        specifier: workspace:*
+        version: link:../../packages/git
       '@kramahq/orchestrator-mcp':
         specifier: workspace:*
         version: link:../../packages/orchestrator-mcp
+      '@kramahq/pack':
+        specifier: workspace:*
+        version: link:../../packages/pack
       '@kramahq/store':
         specifier: workspace:*
         version: link:../../packages/store

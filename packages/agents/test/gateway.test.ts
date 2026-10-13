@@ -504,8 +504,9 @@ describe.each(['1.0', '0.3'] as const)('against an A2A %s agent', (v) => {
 
   describe('timeouts and cancellation', () => {
     it('times out a long task, reports timed_out, and cancels the remote task', async () => {
+      // The budget has to outlast getting the card and the first frame (the task id the cancel needs) on a slow runner.
       const s = (await fake()).queue({ frames: [task('working')], hang: true });
-      const evs = await collect(new A2AGateway().send(ref(s), { text: 'render', timeoutMs: 250 }));
+      const evs = await collect(new A2AGateway().send(ref(s), { text: 'render', timeoutMs: 1500 }));
       expect(evs.at(-1)).toMatchObject({
         kind: 'state',
         state: 'timed_out',

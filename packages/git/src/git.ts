@@ -27,6 +27,8 @@ export class GitError extends Error {
     message: string,
     readonly stderr = '',
     readonly args: readonly string[] = [],
+    /** What the command had written to stdout when it failed (push's per-ref report is there). Credentials removed. */
+    readonly stdout = '',
   ) {
     super(message);
     this.name = 'GitError';
@@ -145,6 +147,7 @@ export class Git {
         },
         (err, stdout, stderr) => {
           if (!err) return resolve(stdout);
+          const out = redactUrls(String(stdout ?? ''));
           const safeArgs = args.map(redactUrls);
           const text = redactUrls(String(stderr || err.message)).trim();
           const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string };
@@ -173,6 +176,7 @@ export class Git {
               `git ${safeArgs[0]} failed: ${text.split('\n')[0] ?? ''}`.trim(),
               text,
               safeArgs,
+              out,
             ),
           );
         },
