@@ -11,7 +11,7 @@ import { parsePackText, type AgentEntry, type PackFile } from './pack-file.js';
 /** The name of the pack file inside a pack directory. */
 export const PACK_FILE = 'krama-pack.yaml';
 /** Variables Krama itself provides to an agent's process, so a config may refer to them unbound. */
-export const KRAMA_VARS: readonly string[] = ['KRAMA_MCP_TOKEN'];
+export const KRAMA_VARS: readonly string[] = ['KRAMA_MCP_TOKEN', 'WORKSPACE_DIR'];
 
 export interface PackLoadEnv {
   /** Registered backends: a config is matched to one by its provider key. */

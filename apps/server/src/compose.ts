@@ -216,6 +216,7 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     definitions: () => o.definitions.map((b) => b.definition),
     systemPrompt: (id) => byId.get(id)?.systemPrompt ?? '',
     backendUsable: (b) => backends.get(b) !== undefined,
+    agentFiles: (pack, agentId) => packManager.agentFiles(pack, agentId),
   };
   // A graph pack's real orchestrator and backends are known before its run is accepted, so policy covers them (#35).
   ports.graphs = { resolve: (pack) => resolveGraphBackends({ ports, directory }, pack) };

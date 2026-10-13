@@ -206,11 +206,16 @@ function managed(
 ): Managed {
   const spec = plan.agents[id]!;
   const over = plan.overrides[id] ?? {};
-  if (spec.config) {
-    const backend = detectBackend(env, id, spec.config);
-    const card = asJson(spec.config.agentCard);
+  // An installed pack knows its agents' files: the config of one taken from git, and the paths its files are at.
+  const config =
+    spec.git || spec.config
+      ? (env.directory.agentFiles?.(pack, id)?.config ?? spec.config)
+      : undefined;
+  if (config) {
+    const backend = detectBackend(env, id, config);
+    const card = asJson(config.agentCard);
     return {
-      baseConfig: { json: spec.config },
+      baseConfig: { json: config },
       definition: {
         id,
         role: spec.role ?? id,

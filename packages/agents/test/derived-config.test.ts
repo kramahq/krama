@@ -136,6 +136,16 @@ describe('secrets a pack binds by name (#37)', () => {
     expect(plan.env).not.toHaveProperty('UNBOUND');
   });
 
+  it('tells the child where its workspace is, so a config written for the wrapper alone works', () => {
+    const plan = deriveLaunch(
+      fake,
+      mcpConfig,
+      {},
+      rt({ ambientEnv: { WORKSPACE_DIR: '/elsewhere' } }),
+    );
+    expect(plan.env.WORKSPACE_DIR).toBe(rt().workspace);
+  });
+
   it('rejects a binding that cannot be resolved', () => {
     const plan = deriveLaunch(fake, mcpConfig, { secrets: { SERVICE_TOKEN: 'ref:gone' } }, rt());
     expect(plan.ok).toBe(false);
