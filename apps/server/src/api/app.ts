@@ -18,6 +18,7 @@ import { RawBody } from './raw.js';
 import { workHandlers } from './work.js';
 import { workspaceHandlers } from './workspaces.js';
 import { artifactHandlers } from './artifacts.js';
+import { auditHandlers } from './audit.js';
 import { transcriptHandlers } from './transcript.js';
 import { catalogHandlers } from './catalog.js';
 import { ApiProblem, toProblem, validationProblem } from './problems.js';
@@ -87,6 +88,7 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
     ...workspaceHandlers(),
     ...artifactHandlers(),
     ...transcriptHandlers(),
+    ...auditHandlers(),
     ...catalogHandlers(),
     ...(o.handlers ?? {}),
   };

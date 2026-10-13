@@ -12,7 +12,7 @@ import {
   type AuditVerifyOptions,
   type IdGenerator,
 } from '@kramahq/engine';
-import { and, asc, eq, gt, gte, like, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, like, lt, lte, or } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { auditHeads, auditRecords } from './schema.js';
 
@@ -130,11 +130,19 @@ export class PgAuditLedger implements AuditLedger {
         and(
           eq(auditRecords.chain, chain),
           o.afterSeq !== undefined ? gt(auditRecords.seq, o.afterSeq) : undefined,
+          o.beforeSeq !== undefined ? lt(auditRecords.seq, o.beforeSeq) : undefined,
+          o.actor !== undefined ? eq(auditRecords.actorId, o.actor) : undefined,
+          o.kind !== undefined
+            ? or(
+                eq(auditRecords.kind, o.kind),
+                like(auditRecords.kind, `${o.kind.replace(/[\\%_]/g, '\\$&')}.%`),
+              )
+            : undefined,
           o.from !== undefined ? gte(auditRecords.at, o.from) : undefined,
           o.to !== undefined ? lte(auditRecords.at, o.to) : undefined,
         ),
       )
-      .orderBy(asc(auditRecords.seq))
+      .orderBy(o.order === 'desc' ? desc(auditRecords.seq) : asc(auditRecords.seq))
       .limit(o.limit ?? 1000);
     return rows.map((r) => JSON.parse(r.record) as AuditRecord);
   }

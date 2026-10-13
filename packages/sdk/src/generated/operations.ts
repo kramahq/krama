@@ -7015,6 +7015,8 @@ export interface OperationTypes {
         subject: { type: string; id: string };
         detail?: { [key: string]: unknown };
         ip?: string;
+        seq?: number;
+        hash?: string;
       }[];
       nextCursor?: string;
       total?: number;
