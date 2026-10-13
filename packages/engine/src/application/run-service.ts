@@ -66,7 +66,25 @@ export class RunService {
       ...cmd.orchestrator,
       delegation: cmd.orchestrator?.delegation ?? c.policy.defaultDelegation ?? DEFAULT_DELEGATION,
     } as Run['orchestrator'];
-    assertBackendAllowed(orch.backend, c.policy.allowedBackends);
+    const graph = pack.agents ? c.p.graphs?.resolve(pack) : undefined;
+    if (graph) {
+      // A graph pack names its own orchestrator, so what the run records is what will really start, and the policy applies
+      // to every agent Krama will start for it. A caller cannot swap the orchestrator of a graph yet: say so, not ignore it.
+      if (cmd.orchestrator?.backend || cmd.orchestrator?.model || cmd.orchestrator?.definitionId)
+        throw new DomainError(
+          'invalid_option',
+          'This pack declares its own agents, so its orchestrator backend and model cannot be overridden yet',
+          {
+            errors: [
+              { field: 'orchestrator', message: 'overrides are not supported for a graph pack' },
+            ],
+          },
+        );
+      orch.backend = graph.root.backend;
+      if (graph.root.model) orch.model = graph.root.model;
+      else delete orch.model;
+      for (const backend of graph.backends) assertBackendAllowed(backend, c.policy.allowedBackends);
+    } else assertBackendAllowed(orch.backend, c.policy.allowedBackends);
 
     const created = await c.p.store.transaction(async (tx) => {
       if (opts.idempotencyKey) {

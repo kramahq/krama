@@ -29,6 +29,7 @@ import {
   OrchestratorMcp,
   OrchestratorRunner,
   TokenRegistry,
+  resolveGraphBackends,
   type AgentDirectory,
   type SubAgentsOptions,
 } from '@kramahq/orchestrator-mcp';
@@ -161,6 +162,8 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     systemPrompt: (id) => byId.get(id)?.systemPrompt ?? '',
     backendUsable: (b) => backends.get(b) !== undefined,
   };
+  // A graph pack's real orchestrator and backends are known before its run is accepted, so policy covers them (#35).
+  ports.graphs = { resolve: (pack) => resolveGraphBackends({ ports, directory }, pack) };
   const mcp = new OrchestratorMcp({
     engine,
     ports,

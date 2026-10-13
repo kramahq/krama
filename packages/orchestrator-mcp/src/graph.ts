@@ -173,7 +173,11 @@ function definitionOf(env: GraphEnv, plan: GraphPlan, id: string): AgentDefiniti
 }
 
 /** The backend whose provider key appears at the top of a wrapper config. Exactly one must. */
-function detectBackend(env: GraphEnv, id: string, config: Record<string, unknown>): string {
+function detectBackend(
+  env: Pick<GraphEnv, 'ports'>,
+  id: string,
+  config: Record<string, unknown>,
+): string {
   const matches = (env.ports.backends?.list() ?? []).filter((b) => b.providerKey in config);
   if (matches.length === 1) return matches[0]!.id;
   const path = `agents.${id}.config`;
@@ -194,7 +198,12 @@ interface Managed {
 }
 
 /** The definition (a projection of the agent's own config, D17) and base config a managed agent starts from. */
-function managed(env: GraphEnv, pack: Pack, plan: GraphPlan, id: string): Managed {
+function managed(
+  env: Pick<GraphEnv, 'ports' | 'directory'>,
+  pack: Pack,
+  plan: GraphPlan,
+  id: string,
+): Managed {
   const spec = plan.agents[id]!;
   const over = plan.overrides[id] ?? {};
   if (spec.config) {
@@ -244,6 +253,51 @@ function managed(env: GraphEnv, pack: Pack, plan: GraphPlan, id: string): Manage
     `The agent graph is invalid: ${path}: ${spec.git ? 'git sources are loaded by the pack loader and cannot be started yet' : 'has no config, definition or external source'}`,
     { issues: [{ path, message: 'no source Krama can start' }] },
   );
+}
+
+/**
+ * What a graph pack will really start, before any run exists: the backend and model of its orchestrator, and the backend of
+ * every agent Krama starts for it (external agents are not started, so they are not counted). `undefined` for a pack with
+ * only a roster. Throws `invalid_graph` for a graph that cannot be resolved, exactly as starting it would.
+ */
+export function resolveGraphBackends(
+  env: Pick<GraphEnv, 'ports' | 'directory'>,
+  pack: Pack,
+): { root: { backend: string; model?: string }; backends: string[] } | undefined {
+  const plan = planFromPack(pack);
+  if (!plan) return undefined;
+  const graph = graphOf(plan);
+  const backends = new Set<string>();
+  let root: { backend: string; model?: string } | undefined;
+  for (const id of graph.order) {
+    if (plan.agents[id]!.external) continue;
+    const { definition, baseConfig } = managed(env, pack, plan, id);
+    const backend = definition.backend.wrapper;
+    backends.add(backend);
+    if (id !== graph.orchestrator) continue;
+    // An embedded config carries its model in the backend's own section; a definition carries it directly.
+    const descriptor = env.ports.backends?.get(backend);
+    const section =
+      baseConfig && descriptor ? asJson(baseConfig.json[descriptor.providerKey]) : undefined;
+    const field = descriptor?.mapping.model;
+    const fromConfig = section && field ? section[field] : undefined;
+    const model = typeof fromConfig === 'string' ? fromConfig : definition.backend.model;
+    root = { backend, ...(model ? { model } : {}) };
+  }
+  if (!root)
+    throw new DomainError(
+      'invalid_graph',
+      'The agent graph is invalid: the orchestrator is external',
+      {
+        issues: [
+          {
+            path: 'orchestrator',
+            message: 'Krama starts the orchestrator, so it cannot be external',
+          },
+        ],
+      },
+    );
+  return { root, backends: [...backends] };
 }
 
 export interface SpecExtras {
