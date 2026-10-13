@@ -38,5 +38,6 @@ describe('the SDK against the server', () => {
     const results = await runConformance(createClient({ baseUrl, token: TOKEN }));
     expect(results.filter((r) => !r.ok)).toEqual([]);
     expect(results.length).toBeGreaterThan(5);
-  });
+    // Dozens of real requests over HTTP: slower than vitest's 5 s default on a loaded macOS runner.
+  }, 60_000);
 });
