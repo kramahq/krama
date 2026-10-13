@@ -111,6 +111,40 @@ describe('deriveLaunch', () => {
   });
 });
 
+describe('secrets a pack binds by name (#37)', () => {
+  const mcpConfig = {
+    agentCard: {},
+    fake: { model: 'm-2' },
+    mcp: {
+      svc: {
+        type: 'http',
+        url: 'http://x/mcp',
+        headers: { Authorization: 'Bearer ${SERVICE_TOKEN}' },
+      },
+    },
+  };
+
+  it('gives the child a bound secret the backend does not declare, and nothing else from the ambient environment', () => {
+    const plan = deriveLaunch(
+      fake,
+      mcpConfig,
+      { secrets: { SERVICE_TOKEN: 'ref:svc' } },
+      rt({ secretValues: { 'ref:svc': 's3cret' }, ambientEnv: { UNBOUND: 'leak' } }),
+    );
+    expect(plan.ok).toBe(true);
+    expect(plan.env.SERVICE_TOKEN).toBe('s3cret');
+    expect(plan.env).not.toHaveProperty('UNBOUND');
+  });
+
+  it('rejects a binding that cannot be resolved', () => {
+    const plan = deriveLaunch(fake, mcpConfig, { secrets: { SERVICE_TOKEN: 'ref:gone' } }, rt());
+    expect(plan.ok).toBe(false);
+    expect(plan.problems).toContainEqual(
+      expect.objectContaining({ code: 'unresolved_secret', path: 'secrets.SERVICE_TOKEN' }),
+    );
+  });
+});
+
 describe('spawning from an agent config', () => {
   const runtime = (dir = tmp()) => {
     const catalog = new BackendRegistry();

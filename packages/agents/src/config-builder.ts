@@ -88,7 +88,7 @@ export function deepMerge(
   return out;
 }
 
-/** Environment for the child: only the variables the backend declares, from bound secrets first, then the ambient environment. */
+/** Environment for the child: the variables the backend declares (bound secrets first, then ambient), plus every secret the pack binds by name. */
 function launchEnv(
   descriptor: BackendDescriptor,
   secrets: Record<string, string> | undefined,
@@ -115,6 +115,20 @@ function launchEnv(
       env[v.name] = value;
       satisfied.add(v.group ?? v.name);
     }
+  }
+  // A pack binds a secret by name for something the backend does not know about, such as the `${SERVICE_TOKEN}` in its own
+  // MCP server's headers. It is still the pack's explicit choice, so it reaches the child; ambient variables never do.
+  const declared = new Set(descriptor.env.map((v) => v.name));
+  for (const [name, ref] of Object.entries(secrets ?? {})) {
+    if (declared.has(name)) continue;
+    const value = rt.secretValues?.[ref];
+    if (value === undefined)
+      problems.push({
+        path: `secrets.${name}`,
+        code: 'unresolved_secret',
+        message: `Secret "${ref}" for ${name} could not be resolved`,
+      });
+    else env[name] = value;
   }
   const groupsSeen = new Set<string>();
   for (const v of descriptor.env) {
