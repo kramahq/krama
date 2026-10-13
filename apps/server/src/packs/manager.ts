@@ -95,6 +95,11 @@ export interface PackManagerOptions {
     subject: { type: string; id: string },
     detail: Record<string, unknown>,
   ) => Promise<void>;
+  /**
+   * How many runs that have not ended use this pack. An uninstall is refused while there are any, because a run reads the
+   * pack version it started with for as long as it lasts.
+   */
+  activeRuns?: (packId: string) => Promise<number>;
   now?: () => Date;
   previewTtlMs?: number;
 }
@@ -527,6 +532,12 @@ export class PackManager implements PackRepository {
   /** Takes the pack out of the catalogue. Its commits stay in the mirror and the lock file, so nothing is lost. */
   async uninstall(id: string, actor: ActorRef): Promise<void> {
     const e = this.entry(id);
+    const active = (await this.o.activeRuns?.(id)) ?? 0;
+    if (active > 0)
+      throw new PackError(
+        'conflict',
+        `${active === 1 ? '1 run is' : `${active} runs are`} still using ${id}. Let ${active === 1 ? 'it' : 'them'} end or stop ${active === 1 ? 'it' : 'them'} first; disabling the pack stops new runs meanwhile.`,
+      );
     this.entries.delete(id);
     await this.save();
     await this.record('pack.uninstalled', actor, e, e.current);

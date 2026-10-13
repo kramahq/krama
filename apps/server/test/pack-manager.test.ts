@@ -435,6 +435,27 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
     ]);
   });
 
+  it('will not uninstall a pack while a run is using it', async () => {
+    let active = 2;
+    const t = await set();
+    const manager = await t.open({ activeRuns: async () => active });
+    const p = await manager.preview(t.src);
+    await manager.install(
+      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+      admin,
+    );
+    await expect(manager.uninstall('pack_notes', admin)).rejects.toMatchObject({
+      code: 'conflict',
+      message: expect.stringContaining('2 runs are still using pack_notes'),
+    });
+    expect(await manager.get('pack_notes')).toBeDefined();
+    // Stopping new runs is still possible meanwhile.
+    expect((await manager.setEnabled('pack_notes', false, admin)).status).toBe('disabled');
+    active = 0;
+    await manager.uninstall('pack_notes', admin);
+    expect(await manager.get('pack_notes')).toBeUndefined();
+  });
+
   it('serves the packs that ship with this build next to the installed ones, and will not install over one', async () => {
     const t = await set();
     const builtin = { id: 'pack_notes', name: 'notes', version: '9.9.9' } as unknown as Pack;

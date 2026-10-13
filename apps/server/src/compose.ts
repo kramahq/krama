@@ -185,6 +185,14 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     engineVersion: o.engineVersion ?? '0.0.0',
     builtin: o.packs,
     audit: control,
+    activeRuns: async (packId) =>
+      (
+        await ports.store.runs.list({
+          packId,
+          status: ['planning', 'running', 'paused', 'awaiting_decision', 'blocked', 'interrupted'],
+          limit: 100,
+        })
+      ).items.length,
   });
   const ports: Ports = {
     // With the audit record in its own database a store transaction cannot include it: those writes follow the change instead.
