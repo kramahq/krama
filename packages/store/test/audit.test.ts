@@ -7,7 +7,7 @@ import { InMemoryAuditBlobs, auditLedgerContract } from '@kramahq/engine/testing
 import type { AuditTamper } from '@kramahq/engine/testing';
 import { canonicalJson } from '@kramahq/engine';
 import { sql } from 'drizzle-orm';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { openPglite, openPostgres, type OpenedStore } from '../src/index.js';
 
 const open: OpenedStore[] = [];
@@ -215,68 +215,78 @@ describe('audit ledger persistence', () => {
   });
 });
 
-describe('the ledger inside a store transaction (M5.5)', () => {
-  const draft = (n: number): AuditDraft => ({
-    chain: 'control',
-    actor: { type: 'user', id: 'u1', role: 'operator' },
-    kind: 'run.created',
-    source: 'api',
-    sourceEventId: `tx-${n}`,
-    payload: { n },
-  });
-
-  it('commits with the change, and tells subscribers only after the commit', async () => {
-    const o = await track(openPglite());
-    const heard: number[] = [];
-    o.ledger.subscribe((r) => heard.push(r.seq));
-    let heardInside: number[] = [];
-    await o.store.transaction(async (tx) => {
-      await tx.ledger!.append(draft(1));
-      await tx.ledger!.append(draft(2));
-      heardInside = [...heard];
+function transactional(name: string, open: () => Promise<OpenedStore>, skip = false) {
+  describe.skipIf(skip)(`the ledger inside a store transaction (M5.5) on ${name}`, () => {
+    /** A chain of its own per test, so tests on a shared Postgres do not see each other's records. */
+    let chain = '';
+    beforeEach(() => {
+      chain = `run:tx_${Math.random().toString(36).slice(2, 10)}`;
     });
-    expect(heardInside).toEqual([]);
-    expect(heard).toEqual([1, 2]);
-    expect((await o.ledger.read('control')).map((r) => r.seq)).toEqual([1, 2]);
-    expect((await o.ledger.verify('control')).ok).toBe(true);
-  });
+    const draft = (n: number): AuditDraft => ({
+      chain,
+      actor: { type: 'user', id: 'u1', role: 'operator' },
+      kind: 'run.created',
+      source: 'api',
+      sourceEventId: `tx-${n}`,
+      payload: { n },
+    });
 
-  it('rolls back with the change: no record, no notification, and the chain is unbroken afterwards', async () => {
-    const o = await track(openPglite());
-    const heard: number[] = [];
-    o.ledger.subscribe((r) => heard.push(r.seq));
-    await o.ledger.append(draft(0));
-    await expect(
-      o.store.transaction(async (tx) => {
+    it('commits with the change, and tells subscribers only after the commit', async () => {
+      const o = await track(open());
+      const heard: number[] = [];
+      o.ledger.subscribe((r) => heard.push(r.seq));
+      let heardInside: number[] = [];
+      await o.store.transaction(async (tx) => {
         await tx.ledger!.append(draft(1));
-        throw new Error('the change failed');
-      }),
-    ).rejects.toThrow('the change failed');
-    expect(await o.ledger.read('control')).toHaveLength(1);
-    expect(heard).toEqual([1]);
-    const next = await o.ledger.append(draft(2));
-    expect(next.record.seq).toBe(2);
-    expect((await o.ledger.verify('control')).ok).toBe(true);
-  });
-
-  it('waits for the outermost commit when transactions nest, and a nested failure that is caught keeps the rest', async () => {
-    const o = await track(openPglite());
-    const heard: number[] = [];
-    o.ledger.subscribe((r) => heard.push(r.seq));
-    await o.store.transaction(async (tx) => {
-      await tx.ledger!.append(draft(1));
-      await tx.transaction(async (inner) => {
-        await inner.ledger!.append(draft(2));
+        await tx.ledger!.append(draft(2));
+        heardInside = [...heard];
       });
-      expect(heard).toEqual([]);
-      await tx
-        .transaction(async (inner) => {
-          await inner.ledger!.append(draft(3));
-          throw new Error('inner failed');
-        })
-        .catch(() => undefined);
+      expect(heardInside).toEqual([]);
+      expect(heard).toEqual([1, 2]);
+      expect((await o.ledger.read(chain)).map((r) => r.seq)).toEqual([1, 2]);
+      expect((await o.ledger.verify(chain)).ok).toBe(true);
     });
-    expect(heard).toEqual([1, 2]);
-    expect((await o.ledger.read('control')).map((r) => r.sourceEventId)).toEqual(['tx-1', 'tx-2']);
+
+    it('rolls back with the change: no record, no notification, and the chain is unbroken afterwards', async () => {
+      const o = await track(open());
+      const heard: number[] = [];
+      o.ledger.subscribe((r) => heard.push(r.seq));
+      await o.ledger.append(draft(0));
+      await expect(
+        o.store.transaction(async (tx) => {
+          await tx.ledger!.append(draft(1));
+          throw new Error('the change failed');
+        }),
+      ).rejects.toThrow('the change failed');
+      expect(await o.ledger.read(chain)).toHaveLength(1);
+      expect(heard).toEqual([1]);
+      const next = await o.ledger.append(draft(2));
+      expect(next.record.seq).toBe(2);
+      expect((await o.ledger.verify(chain)).ok).toBe(true);
+    });
+
+    it('waits for the outermost commit when transactions nest, and a nested failure that is caught keeps the rest', async () => {
+      const o = await track(open());
+      const heard: number[] = [];
+      o.ledger.subscribe((r) => heard.push(r.seq));
+      await o.store.transaction(async (tx) => {
+        await tx.ledger!.append(draft(1));
+        await tx.transaction(async (inner) => {
+          await inner.ledger!.append(draft(2));
+        });
+        expect(heard).toEqual([]);
+        await tx
+          .transaction(async (inner) => {
+            await inner.ledger!.append(draft(3));
+            throw new Error('inner failed');
+          })
+          .catch(() => undefined);
+      });
+      expect(heard).toEqual([1, 2]);
+      expect((await o.ledger.read(chain)).map((r) => r.sourceEventId)).toEqual(['tx-1', 'tx-2']);
+    });
   });
-});
+}
+
+transactional('PGlite', () => openPglite());
+transactional('Postgres', () => openPostgres(pgUrl!), !pgUrl);
