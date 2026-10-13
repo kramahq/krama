@@ -12,6 +12,7 @@ import {
   type PackDiff,
   type PackLoad,
   type PackLoadEnv,
+  withAbsolutePaths,
 } from '@kramahq/pack';
 import type { ActorRef, Pack, PackPreview, PermissionRequest } from '@kramahq/contract';
 import type { BackendCatalog, PackRepository, SecretResolver } from '@kramahq/engine';
@@ -116,6 +117,8 @@ export class PackManager implements PackRepository {
   private entries = new Map<string, Entry>();
   private readonly previews = new Map<string, Held>();
   private readonly loaded = new Map<string, Pack>();
+  /** Each loaded version's agent configs, by `pack@sha`, for the runtime (`agentFiles`). */
+  private readonly files = new Map<string, Record<string, Record<string, unknown>>>();
   private readonly now: () => Date;
 
   private constructor(private readonly o: PackManagerOptions) {
@@ -167,6 +170,15 @@ export class PackManager implements PackRepository {
 
   private versionAt(e: Entry, sha: string): PackVersion | undefined {
     return e.current.sha === sha ? e.current : [...e.history].reverse().find((v) => v.sha === sha);
+  }
+
+  /**
+   * One agent's wrapper config of the installed version a run uses, with its file paths made absolute. Known once that
+   * version has been read (`get` does it), which a run does before it starts anything.
+   */
+  agentFiles(pack: Pack, agentId: string): { config: Record<string, unknown> } | undefined {
+    const config = this.files.get(`${pack.id}@${pack.source.sha}`)?.[agentId];
+    return config ? { config } : undefined;
   }
 
   /** Every version this pack has been, newest first. */
@@ -228,6 +240,14 @@ export class PackManager implements PackRepository {
     const hit = this.loaded.get(key);
     if (hit) return hit;
     const { load } = await this.loadInstalled(e, v);
+    this.files.set(
+      `${e.id}@${v.sha}`,
+      Object.fromEntries(
+        Object.values(load.agents).flatMap((r) =>
+          r.config ? [[r.id, r.dir ? withAbsolutePaths(r.config, r.dir) : r.config]] : [],
+        ),
+      ),
+    );
     const pack = toPack(load, {
       source: { ...v.source, sha: v.sha },
       trust: e.trust,

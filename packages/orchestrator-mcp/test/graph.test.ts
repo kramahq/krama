@@ -439,6 +439,47 @@ describe('a graph that cannot run', () => {
   });
 });
 
+describe('an installed pack that knows its agents’ files', () => {
+  it('starts an agent taken from git from the config the pack loaded, and one with files from the config with absolute paths', async () => {
+    const agents = catalogue();
+    agents.researcher = { git: 'github.com/acme/agents@v1#workers/researcher' };
+    agents.reviewer!.config = card('reviewer', {
+      claude: {},
+      memory: { instructions: './agents/reviewer/instructions.md' },
+    });
+    const loaded = {
+      researcher: card('researcher', { codex: { model: 'from-git' } }),
+      reviewer: card('reviewer', {
+        claude: {},
+        memory: { instructions: '/packs/x/agents/reviewer/instructions.md' },
+      }),
+    } as Record<string, Record<string, unknown>>;
+    const s = await system(
+      undefined,
+      { defaultDelegation: 'native' },
+      [graphPack(agents)],
+      false,
+      (_p, id) => (loaded[id] ? { config: loaded[id]! } : undefined),
+    );
+    s.p.backends = { list: () => BACKENDS, get: (id) => BACKENDS.find((b) => b.id === id) };
+    s.p.secrets = new StaticSecretResolver({ 'vendor-token': 'tok-123' });
+    live.push(s);
+    const runId = await newRun(s);
+    s.p.gateway.queue(
+      'orchestrator',
+      playOrchestrator(s, async () => undefined),
+    );
+    await s.runner.start(runId);
+    await until(() => s.p.agents.spawned.some((x) => x.definition.id === 'planner'));
+
+    const at = (id: string) => s.p.agents.spawned.find((x) => x.definition.id === id)!;
+    expect(at('researcher').baseConfig).toEqual({ json: loaded.researcher });
+    expect(at('researcher').definition.backend.wrapper).toBe('a2a-codex');
+    expect(at('reviewer').baseConfig).toEqual({ json: loaded.reviewer });
+    expect(s.errors).toEqual([]);
+  });
+});
+
 describe('hints', () => {
   it('lists each agent with its description and when to use it', () => {
     expect(

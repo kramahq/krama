@@ -172,7 +172,7 @@ describe('adding a provider needs only a descriptor file', () => {
       model: 'x-1',
       persona: 'Be careful.',
     });
-    expect(out.env).toEqual({ NEWCLI_API_KEY: 's3cret' });
+    expect(out.env).toEqual({ NEWCLI_API_KEY: 's3cret', WORKSPACE_DIR: '/work/agent one' });
     expect(JSON.stringify(out.config)).not.toContain('s3cret');
   });
 
@@ -250,7 +250,7 @@ describe('launch plans per provider', () => {
       systemPromptAppend: 'Be careful.',
       allowedTools: ['Read', 'Edit'],
     });
-    expect(out.env).toEqual({ ANTHROPIC_API_KEY: 'sk-ant-x' });
+    expect(out.env).toEqual({ ANTHROPIC_API_KEY: 'sk-ant-x', WORKSPACE_DIR: '/work/agent one' });
     expect(out.args).toEqual([
       '--config',
       '/tmp/agent one/config.json',
@@ -342,7 +342,8 @@ describe('launch plans per provider', () => {
       {},
       { ambientEnv: { ANTHROPIC_API_KEY: 'k', AWS_SECRET_ACCESS_KEY: 'nope', PATH: '/bin' } },
     );
-    expect(Object.keys(out.env)).toEqual(['ANTHROPIC_API_KEY']);
+    // The declared variable and where the agent works: nothing else of the parent's environment.
+    expect(Object.keys(out.env).sort()).toEqual(['ANTHROPIC_API_KEY', 'WORKSPACE_DIR']);
   });
 
   it('binds to loopback unless told otherwise', () => {

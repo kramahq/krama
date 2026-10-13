@@ -29,6 +29,11 @@ export interface AgentDirectory {
     def: AgentDefinition,
     runId: string,
   ): { mcp?: Record<string, unknown>; env?: Record<string, string> };
+  /**
+   * The wrapper config of one agent of an installed pack, as it was loaded: an agent taken from git, or one whose config
+   * points at files next to the pack. Its file paths are absolute. Absent for a pack that is not installed from a directory.
+   */
+  agentFiles?(pack: Pack, agentId: string): { config: Record<string, unknown> } | undefined;
 }
 
 export interface SharedState {

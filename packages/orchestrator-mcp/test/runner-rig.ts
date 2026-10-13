@@ -31,6 +31,7 @@ export async function system(
   policy: object = {},
   packs: Pack[] = [pack()],
   withCollector = false,
+  agentFiles?: (pack: Pack, agentId: string) => { config: Record<string, unknown> } | undefined,
 ): Promise<System> {
   const base = shared ?? createFakePorts(packs);
   const p: FakePorts = shared ? { ...base, agents: new FakeAgentRuntime() } : base;
@@ -45,6 +46,7 @@ export async function system(
     definitions: () => defs,
     systemPrompt: (id: string) => (id === 'orchestrator/default' ? '' : ''),
     backendUsable: () => true,
+    ...(agentFiles ? { agentFiles } : {}),
   };
   const errors: unknown[] = [];
   const mcp = new OrchestratorMcp({ engine, ports: p, directory, onError: (e) => errors.push(e) });

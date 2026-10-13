@@ -88,6 +88,9 @@ export function deepMerge(
   return out;
 }
 
+/** The variable that holds the agent's workspace directory, set for every agent Krama starts. */
+export const WORKSPACE_VAR = 'WORKSPACE_DIR';
+
 /** Environment for the child: the variables the backend declares (bound secrets first, then ambient), plus every secret the pack binds by name. */
 function launchEnv(
   descriptor: BackendDescriptor,
@@ -130,6 +133,9 @@ function launchEnv(
       });
     else env[name] = value;
   }
+  // Where the agent works. Wrapper configs refer to it as `${WORKSPACE_DIR}` (in an MCP server's arguments, say), so a
+  // config written for the wrapper alone works here unchanged.
+  if (!(WORKSPACE_VAR in env)) env[WORKSPACE_VAR] = rt.workspace;
   const groupsSeen = new Set<string>();
   for (const v of descriptor.env) {
     const key = v.group ?? v.name;
