@@ -6,7 +6,6 @@ import { Button, EmptyState, PageHeader } from '@/components/ui/primitives';
 export function Placeholder({
   title,
   sub,
-  task,
   children,
 }: {
   title: string;
@@ -26,7 +25,7 @@ export function Placeholder({
           </Link>
         }
       >
-        {`${children} Planned as ${task}.`}
+        {children}
       </EmptyState>
     </>
   );

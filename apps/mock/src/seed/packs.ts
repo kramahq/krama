@@ -72,7 +72,51 @@ const text = (title: string, d?: string) => ({
 });
 
 export const packs: Pack[] = [
-  { ...base, stats: { runs: 42, successRate: 0.88, avgCost: { amount: 21.4, currency: 'USD' } } },
+  {
+    ...base,
+    orchestrator: 'lead',
+    agents: {
+      lead: {
+        role: 'orchestrator',
+        description: 'Plans the work and coordinates the team.',
+        config: {
+          agentCard: {
+            name: 'Lead',
+            skills: [{ id: 'plan', name: 'Plan', description: 'Plan and coordinate work' }],
+          },
+          codex: { model: 'gpt-5.5' },
+        },
+        subAgents: [
+          { agent: 'developer', hint: 'Implement the approved request.' },
+          { agent: 'reviewer', hint: 'Check the work and request changes when needed.' },
+        ],
+      },
+      developer: {
+        role: 'developer',
+        description: 'Implements changes and addresses feedback.',
+        config: {
+          agentCard: {
+            name: 'Developer',
+            skills: [{ id: 'implement', name: 'Implement', description: 'Implement changes' }],
+          },
+          codex: { model: 'gpt-5.5' },
+        },
+      },
+      reviewer: {
+        role: 'reviewer',
+        description: 'Reviews changes and can ask the developer for revisions.',
+        config: {
+          agentCard: {
+            name: 'Reviewer',
+            skills: [{ id: 'review', name: 'Review', description: 'Review changes' }],
+          },
+          copilot: { model: 'gpt-4.1' },
+        },
+        subAgents: [{ agent: 'developer', hint: 'Revise a change after review.' }],
+      },
+    },
+    stats: { runs: 42, successRate: 0.88, avgCost: { amount: 21.4, currency: 'USD' } },
+  },
   mk({
     id: 'video',
     name: 'Explainer Video',

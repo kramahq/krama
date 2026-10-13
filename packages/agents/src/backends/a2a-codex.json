@@ -6,7 +6,7 @@
   "package": {
     "name": "a2a-codex",
     "bin": "a2a-codex",
-    "install": "npm i -g a2a-codex",
+    "install": "npm i -g a2a-codex@1.7.2",
     "docs": "https://a2a-wrapper.allsrc.dev",
     "minVersion": "1.7.2"
   },
@@ -109,8 +109,8 @@
   "env": [
     {
       "name": "OPENAI_API_KEY",
-      "description": "OpenAI API key for the Codex SDK.",
-      "required": true,
+      "description": "Optional OpenAI API key; a local `codex login` also authenticates the wrapper.",
+      "required": false,
       "secret": true
     }
   ],
@@ -132,10 +132,11 @@
       "description": "a2a-codex is installed",
       "kind": "binary",
       "check": {
-        "command": ["a2a-codex", "--version"]
+        "command": ["a2a-codex", "--version"],
+        "expect": "^1\\.7\\.2$"
       },
       "install": {
-        "any": "npm i -g a2a-codex"
+        "any": "npm i -g a2a-codex@1.7.2"
       }
     },
     {
@@ -151,7 +152,7 @@
     },
     {
       "id": "auth",
-      "description": "OPENAI_API_KEY is available to the agent",
+      "description": "OPENAI_API_KEY or a local Codex CLI login is available to the agent",
       "kind": "account",
       "check": {
         "manual": true

@@ -243,6 +243,7 @@ export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<stri
         orchestrator: {
           definitionId: 'orchestrator/default',
           backend: b.orchestrator?.backend ?? 'a2a-codex',
+          delegation: b.orchestrator?.delegation ?? 'native',
           ...(b.orchestrator?.model ? { model: b.orchestrator.model } : {}),
         },
         budget: {

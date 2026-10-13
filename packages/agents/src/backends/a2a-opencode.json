@@ -6,7 +6,7 @@
   "package": {
     "name": "a2a-opencode",
     "bin": "a2a-opencode",
-    "install": "npm i -g a2a-opencode",
+    "install": "npm i -g a2a-opencode@1.7.2",
     "docs": "https://a2a-wrapper.allsrc.dev",
     "minVersion": "1.7.2"
   },
@@ -97,10 +97,11 @@
       "description": "a2a-opencode is installed",
       "kind": "binary",
       "check": {
-        "command": ["a2a-opencode", "--version"]
+        "command": ["a2a-opencode", "--version"],
+        "expect": "^1\\.7\\.2$"
       },
       "install": {
-        "any": "npm i -g a2a-opencode"
+        "any": "npm i -g a2a-opencode@1.7.2"
       }
     },
     {

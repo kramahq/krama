@@ -30,6 +30,18 @@ export const useAllowedBackends = () =>
     queryFn: () => api.allowedBackends(),
     staleTime: 60_000,
   });
+export const useBackends = () =>
+  useQuery({
+    queryKey: ['backends'],
+    queryFn: () => api.api.listBackends({ query: { limit: 100 } }),
+    staleTime: 60_000,
+  });
+export const useAgentDefinitions = () =>
+  useQuery({
+    queryKey: ['agent-definitions'],
+    queryFn: () => api.api.listAgentDefinitions({ query: { limit: 100 } }),
+    staleTime: 60_000,
+  });
 export const useMe = () =>
   useQuery({ queryKey: keys.me, queryFn: () => api.me(), staleTime: 5 * 60_000 });
 export const useProjects = () =>

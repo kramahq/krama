@@ -6,7 +6,7 @@
   "package": {
     "name": "a2a-claude",
     "bin": "a2a-claude",
-    "install": "npm i -g a2a-claude",
+    "install": "npm i -g a2a-claude@0.4.1",
     "docs": "https://a2a-wrapper.allsrc.dev",
     "minVersion": "0.4.1"
   },
@@ -169,10 +169,11 @@
       "description": "a2a-claude is installed",
       "kind": "binary",
       "check": {
-        "command": ["a2a-claude", "--version"]
+        "command": ["a2a-claude", "--version"],
+        "expect": "^0\\.4\\.1$"
       },
       "install": {
-        "any": "npm i -g a2a-claude"
+        "any": "npm i -g a2a-claude@0.4.1"
       }
     },
     {
