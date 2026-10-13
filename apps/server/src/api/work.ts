@@ -258,7 +258,11 @@ export async function buildRunCost(ctx: ApiContext, run: Run): Promise<RunCost> 
     usage: usageRows(ledger.filter((e) => e.phaseId === p.id).map((e) => e.usage)),
   }));
 
-  const group = (keyOf: (s: Step) => string, orchestratorKey: string) => {
+  const group = (
+    keyOf: (s: Step) => string,
+    reporterKey: (a: NonNullable<(typeof ledger)[number]['agent']>) => string,
+    orchestratorKey: string,
+  ) => {
     const groups = new Map<
       string,
       { costs: (typeof ledger)[number]['cost'][]; usage: Usage[][] }
@@ -270,8 +274,10 @@ export async function buildRunCost(ctx: ApiContext, run: Run): Promise<RunCost> 
       groups.set(key, g);
     };
     for (const s of steps) add(keyOf(s), s.cost ?? null, s.usage ?? []);
-    // Usage the orchestrator reported on its own has no step: it belongs to the orchestrator, not to nobody.
-    for (const e of ledger) if (!e.stepId) add(orchestratorKey, e.cost, e.usage);
+    // Usage with no step came from an agent that reports on its own: a native worker says who it is, and that is kept.
+    // Older entries and anonymous reports are the orchestrator's, not nobody's.
+    for (const e of ledger)
+      if (!e.stepId) add(e.agent ? reporterKey(e.agent) : orchestratorKey, e.cost, e.usage);
     return [...groups].map(([key, g]) => ({
       key,
       label: key,
@@ -284,8 +290,16 @@ export async function buildRunCost(ctx: ApiContext, run: Run): Promise<RunCost> 
     total: run.budget.spent,
     usage: usageRows(ledger.map((e) => e.usage)),
     byPhase,
-    byAgent: group((s) => s.agent.role, 'orchestrator'),
-    byBackend: group((s) => s.agent.backend, run.orchestrator.backend),
+    byAgent: group(
+      (s) => s.agent.role,
+      (a) => a.role,
+      'orchestrator',
+    ),
+    byBackend: group(
+      (s) => s.agent.backend,
+      (a) => a.backend,
+      run.orchestrator.backend,
+    ),
     byTool: [],
   };
 }

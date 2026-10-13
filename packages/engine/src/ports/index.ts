@@ -138,6 +138,8 @@ export interface UsageEntry {
   /** `null` = provider did not report cost; never estimated. */
   cost: Spend;
   usage: Usage[];
+  /** Who reported it. Absent on entries written before this was recorded, and on spend with no known reporter. */
+  agent?: { id: string; role: string; backend: string };
 }
 
 export interface UsageLedger {
