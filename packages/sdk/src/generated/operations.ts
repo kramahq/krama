@@ -1715,6 +1715,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         data: unknown;
       }[];
@@ -1828,6 +1829,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt: string;
       updatedAt: string;
@@ -1940,6 +1942,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         createdAt: string;
         updatedAt: string;
@@ -2041,6 +2044,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt: string;
       updatedAt: string;
@@ -2144,6 +2148,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt: string;
       updatedAt: string;
@@ -2242,6 +2247,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt: string;
       updatedAt: string;
@@ -2340,6 +2346,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt: string;
       updatedAt: string;
@@ -2438,6 +2445,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt: string;
       updatedAt: string;
@@ -2536,6 +2544,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt: string;
       updatedAt: string;
@@ -2634,6 +2643,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt: string;
       updatedAt: string;
@@ -2955,6 +2965,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         data: unknown;
       }[];
@@ -3048,6 +3059,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         summary?: string;
         derivedFrom?: string[];
@@ -3102,6 +3114,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         summary?: string;
         derivedFrom?: string[];
@@ -3147,6 +3160,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       summary?: string;
       derivedFrom?: string[];
@@ -3189,6 +3203,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       summary?: string;
       derivedFrom?: string[];
@@ -3246,6 +3261,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         summary?: string;
         derivedFrom?: string[];
@@ -3305,6 +3321,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       summary?: string;
       derivedFrom?: string[];
@@ -3384,6 +3401,7 @@ export interface OperationTypes {
             type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
             id: string;
             name?: string;
+            role?: string;
           };
           at: string;
         }[];
@@ -3398,6 +3416,7 @@ export interface OperationTypes {
             type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
             id: string;
             name?: string;
+            role?: string;
           };
           at: string;
         };
@@ -3460,6 +3479,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         at: string;
       }[];
@@ -3474,6 +3494,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         at: string;
       };
@@ -3533,6 +3554,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         at: string;
       }[];
@@ -3547,6 +3569,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         at: string;
       };
@@ -3606,6 +3629,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         at: string;
       }[];
@@ -3620,6 +3644,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         at: string;
       };
@@ -3679,6 +3704,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         at: string;
       }[];
@@ -3693,6 +3719,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         at: string;
       };
@@ -3760,6 +3787,7 @@ export interface OperationTypes {
             type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
             id: string;
             name?: string;
+            role?: string;
           };
           at: string;
         }[];
@@ -3774,6 +3802,7 @@ export interface OperationTypes {
             type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
             id: string;
             name?: string;
+            role?: string;
           };
           at: string;
         };
@@ -5128,6 +5157,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         createdAt: string;
         updatedAt: string;
@@ -5275,6 +5305,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         }[];
         createdAt: string;
         links: {
@@ -5315,6 +5346,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       }[];
       createdAt: string;
       links: {
@@ -5346,6 +5378,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       }[];
       createdAt: string;
       links: {
@@ -5383,6 +5416,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       }[];
       createdAt: string;
       links: {
@@ -5697,6 +5731,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         data: unknown;
       }[];
@@ -6136,6 +6171,7 @@ export interface OperationTypes {
             type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
             id: string;
             name?: string;
+            role?: string;
           };
           at: string;
         }[];
@@ -6150,6 +6186,7 @@ export interface OperationTypes {
             type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
             id: string;
             name?: string;
+            role?: string;
           };
           at: string;
         };
@@ -6315,6 +6352,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         createdAt?: string;
         links: {
@@ -6380,6 +6418,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt?: string;
       links: {
@@ -6442,6 +6481,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt?: string;
       links: {
@@ -6504,6 +6544,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt?: string;
       links: {
@@ -6568,6 +6609,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt?: string;
       links: {
@@ -6630,6 +6672,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt?: string;
       links: {
@@ -6724,6 +6767,7 @@ export interface OperationTypes {
         type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
         id: string;
         name?: string;
+        role?: string;
       };
       createdAt: string;
       updatedAt: string;
@@ -6823,6 +6867,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         createdAt: string;
         updatedAt: string;
@@ -6872,6 +6917,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         packs: number;
       }[];
@@ -6963,6 +7009,7 @@ export interface OperationTypes {
           type: 'user' | 'agent' | 'system' | 'schedule' | 'orchestrator';
           id: string;
           name?: string;
+          role?: string;
         };
         action: string;
         subject: { type: string; id: string };

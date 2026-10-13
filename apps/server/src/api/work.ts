@@ -21,7 +21,7 @@ import {
 } from '@kramahq/engine';
 import type { ApiContext, ApiRequest, Handlers } from './context.js';
 import { ApiProblem, notFound } from './problems.js';
-import { satisfies, type Principal } from './auth.js';
+import { satisfies, topRole, type Principal } from './auth.js';
 import {
   Versioned,
   clampLimit,
@@ -44,7 +44,12 @@ interface ListQuery {
   fields?: string;
 }
 
-export const actorOf = (p: Principal): ActorRef => ({ type: 'user', id: p.id, name: p.name });
+export const actorOf = (p: Principal): ActorRef => ({
+  type: 'user',
+  id: p.id,
+  name: p.name,
+  ...(topRole(p) ? { role: topRole(p)! } : {}),
+});
 
 /** A store page as an API page. The store pages by offset; clients only ever see the opaque cursor. */
 function fromStore<T, U>(page: StorePage<T>, map: (t: T) => U): Paged<U> {

@@ -170,6 +170,11 @@ export interface Store {
   projects: ProjectRepository;
   audit: AuditLog;
   usage: UsageLedger;
+  /**
+   * The audit ledger bound to this store. Inside a transaction its appends commit or roll back with it, and its
+   * subscribers hear nothing until the commit. Absent on a store that cannot do that; the engine then uses `Ports.ledger`.
+   */
+  ledger?: AuditLedger;
   /** Runs `fn` atomically; if it throws, nothing is applied. */
   transaction<T>(fn: (tx: Store) => Promise<T>): Promise<T>;
 }
