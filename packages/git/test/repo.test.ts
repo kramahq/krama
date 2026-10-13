@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Git, GitError, Repo, redactUrls, type Person, type RepoEvent } from '../src/index.js';
@@ -109,12 +109,7 @@ describe.skipIf(!hasGit)('an authored repository', () => {
       expect(err.message).not.toContain(secret);
       expect((await draft.log()).map((c) => c.subject)).toEqual(['Start']);
       // Nothing is left staged, so the next save does not carry it along by accident.
-      expect(
-        execFileSync('git', ['diff', '--cached', '--name-only'], {
-          cwd: draft.dir,
-          encoding: 'utf8',
-        }),
-      ).toBe('');
+      expect(await git.text(['diff', '--cached', '--name-only'], { cwd: draft.dir })).toBe('');
       // A reference is fine, and so is a binary file that happens to contain such bytes.
       put(draft.dir, 'agents/x/config.json', '{ "k": "${API_KEY}" }');
       writeFileSync(
@@ -181,10 +176,7 @@ describe.skipIf(!hasGit)('an authored repository', () => {
 
     it('does not count a tag that is not an annotated revision, and numbers concurrent ones apart', async () => {
       const repo = await newRepo();
-      execFileSync('git', ['tag', 'rev/7'], {
-        cwd: repo.dir,
-        env: { ...process.env, GIT_CONFIG_GLOBAL: devNull },
-      });
+      await git.run(['tag', 'rev/7'], { cwd: repo.dir });
       expect(await repo.revisions()).toEqual([]);
       const d = await repo.createDraft('d', ann);
       const shas: string[] = [];

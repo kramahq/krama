@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
-import { devNull, tmpdir } from 'node:os';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 export type GitErrorCode =
   | 'git_missing'
@@ -34,6 +36,17 @@ export class GitError extends Error {
 /** `https://user:token@host/x` -> `https://host/x`, so a secret in a URL never reaches a log. */
 export const redactUrls = (text: string): string =>
   text.replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, '$1');
+
+/** An empty git config file to point `GIT_CONFIG_GLOBAL` at: `/dev/null` is not a path git can open on Windows. */
+function emptyConfig(): string {
+  const dir = join(tmpdir(), 'krama-git-isolated');
+  const file = join(dir, 'empty.gitconfig');
+  if (!existsSync(file)) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(file, '');
+  }
+  return file;
+}
 
 export interface GitOptions {
   /** The git executable. Default `git`. */
@@ -105,10 +118,11 @@ export class Git {
       LANGUAGE: 'C',
       ...(o.isolated
         ? {
-            GIT_CONFIG_GLOBAL: devNull,
-            GIT_CONFIG_SYSTEM: devNull,
+            GIT_CONFIG_GLOBAL: emptyConfig(),
+            GIT_CONFIG_SYSTEM: emptyConfig(),
             GIT_CONFIG_NOSYSTEM: '1',
             HOME: tmpdir(),
+            USERPROFILE: tmpdir(),
           }
         : {}),
       ...(o.env ?? {}),
