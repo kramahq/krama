@@ -27,9 +27,19 @@ const tmp = () => {
   dirs.push(d);
   return d;
 };
+/** Temp directories are the system's to clean up if a child that has just stopped still holds one (Windows). */
+const rmQuietly = (d: string) => {
+  try {
+    rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== 'EBUSY' && code !== 'EPERM') throw e;
+  }
+};
+
 afterEach(async () => {
   await Promise.allSettled(runtimes.splice(0).map((r) => r.shutdown()));
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  for (const d of dirs.splice(0)) rmQuietly(d);
 });
 
 const descriptor = new BackendRegistry();
