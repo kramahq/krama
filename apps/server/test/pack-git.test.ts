@@ -31,6 +31,8 @@ const tmp = () => {
 };
 afterAll(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
+const slash = (p: string): string => p.replace(/\\/g, '/');
+
 /** A git remote: a bare repository and a working copy to commit into. */
 async function remote() {
   const base = tmp();
@@ -113,7 +115,11 @@ agents:
   reviewer:
     git: "${w}@v2.0.0#agents/reviewer"
 `;
-      await packs.commit({ 'krama-pack.yaml': pack(wrappers.url, team.url) }, 'the pack');
+      // Forward slashes: a backslash inside a double-quoted YAML string is an escape, and git takes either on Windows.
+      await packs.commit(
+        { 'krama-pack.yaml': pack(slash(wrappers.url), slash(team.url)) },
+        'the pack',
+      );
       await packs.tag('v0.1.0');
       return { wrappers, team, packs };
     };
@@ -142,10 +148,12 @@ agents:
       });
       // Three sources from three repositories (the planner and reviewer share one), each pinned to a commit.
       const lock = Object.values(await sources.lockfile());
-      expect(lock.map((l) => l.url).sort()).toEqual(
-        [packs.url, team.url, wrappers.url, wrappers.url].sort(),
+      expect(lock.map((l) => slash(l.url)).sort()).toEqual(
+        [packs.url, team.url, wrappers.url, wrappers.url].map(slash).sort(),
       );
-      expect(load.agents['author']!.sha).toBe(lock.find((l) => l.url === team.url)!.sha);
+      expect(load.agents['author']!.sha).toBe(
+        lock.find((l) => slash(l.url) === slash(team.url))!.sha,
+      );
 
       const again = await loadPackDir(pack.dir, loadEnv(sources));
       expect(again.digest).toBe(load.digest);
