@@ -172,6 +172,11 @@ async function finished(
 const preview = async (who: string, source: object) =>
   finished(who, await call(who, 'POST', '/packs/preview', { source }));
 const src = () => ({ url: packs.url, ref: 'v0.1.0', path: 'notes' });
+const all = (p: { permissions: { id: string }[] }) => ({
+  granted: p.permissions.map((x) => x.id),
+  declined: [] as string[],
+});
+
 const consent = { granted: [], declined: [] };
 
 describe.skipIf(!hasGit)('the pack routes', { timeout: 120_000 }, () => {
@@ -249,7 +254,7 @@ describe.skipIf(!hasGit)('the pack routes', { timeout: 120_000 }, () => {
       'admin',
       'POST',
       '/packs',
-      { previewId: bad.previewId, manifestDigest: bad.manifestDigest, consent },
+      { previewId: bad.previewId, manifestDigest: bad.manifestDigest, consent: all(bad) },
       { 'idempotency-key': 'k-invalid' },
     );
     expect(res.statusCode).toBe(422);
@@ -272,7 +277,7 @@ describe.skipIf(!hasGit)('the pack routes', { timeout: 120_000 }, () => {
       'admin',
       'POST',
       '/packs',
-      { previewId: future.previewId, manifestDigest: future.manifestDigest, consent },
+      { previewId: future.previewId, manifestDigest: future.manifestDigest, consent: all(future) },
       { 'idempotency-key': 'k-future' },
     );
     expect(inc.statusCode).toBe(409);
@@ -293,7 +298,7 @@ describe.skipIf(!hasGit)('the pack routes', { timeout: 120_000 }, () => {
       'author',
       'POST',
       '/packs',
-      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
       { 'idempotency-key': 'k-author' },
     );
     expect(asAuthor.statusCode).toBe(403);
@@ -390,7 +395,7 @@ describe.skipIf(!hasGit)('the pack routes', { timeout: 120_000 }, () => {
         'admin',
         'POST',
         '/packs',
-        { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+        { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
         { 'idempotency-key': `k-files-${Math.random()}` },
       );
     };
@@ -436,7 +441,7 @@ describe.skipIf(!hasGit)('the pack routes', { timeout: 120_000 }, () => {
           'admin',
           'POST',
           '/packs',
-          { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+          { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
           { 'idempotency-key': 'k-link' },
         );
         const listed = (await call('viewer', 'GET', '/packs/pack_linked/files')).json() as {
@@ -456,7 +461,7 @@ describe.skipIf(!hasGit)('the pack routes', { timeout: 120_000 }, () => {
         'admin',
         'POST',
         '/packs',
-        { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+        { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
         { 'idempotency-key': `k-busy-${Math.random()}` },
       );
       expect([200, 201, 409]).toContain(installed.statusCode);
@@ -478,6 +483,30 @@ describe.skipIf(!hasGit)('the pack routes', { timeout: 120_000 }, () => {
 
       await krama.engine.runs.stop(run.id, person, 'done');
       expect((await call('admin', 'DELETE', '/packs/pack_notes')).statusCode).toBe(204);
+    });
+  });
+
+  describe('consent', () => {
+    it('refuses an install whose consent leaves something unanswered or declines something', async () => {
+      await call('admin', 'DELETE', '/packs/pack_notes'); // whatever an earlier test left installed
+      const p = packPreview.parse((await preview('admin', src())).result);
+      const post = (consent: object, key: string) =>
+        call(
+          'admin',
+          'POST',
+          '/packs',
+          { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+          { 'idempotency-key': key },
+        );
+      const unanswered = await post({ granted: [], declined: [] }, 'k-unanswered');
+      expect(unanswered.statusCode).toBe(422);
+      expect(JSON.stringify(unanswered.json())).toContain('not been answered');
+      const [first, ...rest] = all(p).granted;
+      const declined = await post({ granted: rest, declined: [first] }, 'k-declined');
+      expect(declined.statusCode).toBe(403);
+      expect(JSON.stringify(declined.json())).toContain('everything it asks for');
+      // The preview is still good for a consent that answers everything.
+      expect((await post(all(p), 'k-answered')).statusCode).toBeLessThan(300);
     });
   });
 });

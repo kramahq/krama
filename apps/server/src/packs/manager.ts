@@ -68,6 +68,8 @@ interface Held {
   /** The installed pack this preview would replace, if it is an update. */
   updates?: string;
   compatible: boolean;
+  /** Everything the person is asked to allow: what the pack asks for, and the source when it is not trusted. */
+  permissions: PermissionRequest[];
   /** What stopped the pack loading, so installing the preview says why instead of that it is "gone". */
   errors?: PackPreview['issues'];
   expiresAt: number;
@@ -292,7 +294,8 @@ export class PackManager implements PackRepository {
         path: 'source',
       });
 
-    const permissions = load.ok ? await permissionSurface(load, this.o.backends) : [];
+    const surface = load.ok ? await permissionSurface(load, this.o.backends) : [];
+    const permissions = load.ok ? [...surface, ...sourcePermission(src, trust)] : [];
     const compatible = !load.file || engineCompatible(load.file.engine, this.o.engineVersion);
     if (!compatible)
       issues.push({
@@ -306,7 +309,7 @@ export class PackManager implements PackRepository {
           source: { ...src, sha: peeked.sha },
           trust,
           status: 'available',
-          permissions,
+          permissions: surface,
           engineVersion: this.o.engineVersion,
         })
       : placeholder(src, peeked.sha, trust, load.file?.name);
@@ -325,7 +328,7 @@ export class PackManager implements PackRepository {
         cur.load,
         load,
         await permissionSurface(cur.load, this.o.backends),
-        permissions,
+        surface,
       );
     }
     const previewId = `prev_${randomBytes(9).toString('base64url')}`;
@@ -352,6 +355,7 @@ export class PackManager implements PackRepository {
       packId: manifest.id,
       ...(against ? { updates: against.id } : {}),
       compatible,
+      permissions,
       ...(load.ok ? {} : { errors: issues.filter((i) => i.severity === 'error') }),
       expiresAt,
     };
@@ -442,6 +446,7 @@ export class PackManager implements PackRepository {
         'conflict',
         `A pack called ${held.packId} is already installed; update it instead`,
       );
+    const consent = consentFor(held.permissions, req.consent);
     const { version } = await this.pin(held);
     const at = this.now().toISOString();
     const v: PackVersion = {
@@ -449,7 +454,7 @@ export class PackManager implements PackRepository {
       at,
       by: actor.id,
       action: 'install',
-      consent: req.consent,
+      consent,
     };
     const entry: Entry = {
       id: held.packId,
@@ -480,6 +485,8 @@ export class PackManager implements PackRepository {
     const held = this.take(req.previewId, req.manifestDigest, 'update', id);
     if (held.packId !== id)
       throw new PackError('conflict', `That commit holds ${held.packId}, not ${id}`);
+    // What was allowed before stays allowed; only what is new has to be answered.
+    const consent = consentFor(held.permissions, req.consent, new Set(e.current.consent?.granted));
     const { version } = await this.pin(held);
     if (version.sha === e.current.sha && version.digest === e.current.digest)
       throw new PackError('conflict', 'That is what is installed already');
@@ -488,7 +495,7 @@ export class PackManager implements PackRepository {
       at: this.now().toISOString(),
       by: actor.id,
       action: 'update',
-      consent: req.consent,
+      consent,
     };
     e.source = held.src;
     e.current = v;
@@ -558,6 +565,57 @@ export class PackManager implements PackRepository {
       },
     );
   }
+}
+
+/** The source itself is something to allow when it is not on the trusted list: there is no admin to ask but the one installing. */
+function sourcePermission(
+  src: { url: string; ref: string },
+  trust: Pack['trust'],
+): PermissionRequest[] {
+  if (trust === 'trusted') return [];
+  return [
+    {
+      id: `source:${src.url}`,
+      kind: 'network',
+      subject: src.url,
+      risk: 'high',
+      reason:
+        'This source is not on the trusted list. What it contains runs with the access listed here.',
+      requestedBy: 'source',
+    },
+  ];
+}
+
+/**
+ * What a person said about what a pack asks for, checked: every permission is answered, none is made up, and nothing is
+ * declined (a pack is installed with all it asks for or not at all). `already` is what an earlier version was allowed.
+ * Returns what is allowed now, which is what the next update starts from.
+ */
+function consentFor(
+  asked: readonly PermissionRequest[],
+  said: { granted: string[]; declined: string[] },
+  already: ReadonlySet<string> = new Set(),
+): { granted: string[]; declined: string[] } {
+  const ids = new Set(asked.map((p) => p.id));
+  const granted = new Set(said.granted);
+  const unknown = [...said.granted, ...said.declined].filter((i) => !ids.has(i) && !already.has(i));
+  if (unknown.length)
+    throw new PackError('invalid', `This pack does not ask for: ${unknown.join(', ')}`);
+  if (said.declined.length)
+    throw new PackError(
+      'forbidden',
+      `You declined ${said.declined.join(', ')}. A pack is installed with everything it asks for, or not at all.`,
+    );
+  const open = asked.filter((p) => !already.has(p.id) && !granted.has(p.id));
+  if (open.length)
+    throw new PackError(
+      'invalid',
+      `${open.length === 1 ? '1 permission has' : `${open.length} permissions have`} not been answered: ${open.map((p) => p.id).join(', ')}`,
+    );
+  return {
+    granted: asked.filter((p) => already.has(p.id) || granted.has(p.id)).map((p) => p.id),
+    declined: [],
+  };
 }
 
 /** What a preview shows for a pack that did not load: enough to name it, with the issues carrying the reason. */
