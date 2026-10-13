@@ -84,7 +84,8 @@ const until = async (cond: () => boolean | Promise<boolean>, ms = 8000) => {
 
 afterEach(async () => {
   await Promise.allSettled(runtimes.splice(0).map((r) => r.shutdown()));
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  for (const d of dirs.splice(0))
+    rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
 describe('spawning a backend that exists only as data', () => {
