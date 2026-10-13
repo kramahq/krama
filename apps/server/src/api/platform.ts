@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { A2A_VERSIONS } from '@kramahq/agents';
 import {
   viewerId,
   type Capabilities,
@@ -31,7 +32,7 @@ export function buildCapabilities(c: ApiContext): Capabilities {
   return {
     apiVersion: 'v1',
     engineVersion: c.version,
-    a2a: { versions: ['0.3'] },
+    a2a: { versions: [...A2A_VERSIONS] },
     features: {
       runs: true,
       decisions: true,

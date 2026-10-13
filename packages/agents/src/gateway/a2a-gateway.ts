@@ -46,6 +46,13 @@ import {
 import { dropMalformedSseFrames } from './sse.js';
 import { streamToWire, taskToWire } from './wire.js';
 
+/**
+ * The A2A protocol versions the gateway speaks, newest first. It is built on the official SDK, which talks 1.0 to an agent
+ * whose card offers it and falls back to 0.3 for one that does not (the compatibility layer). The capabilities endpoint
+ * reports this list, and a test ties the two together.
+ */
+export const A2A_VERSIONS: readonly string[] = ['1.0', '0.3'];
+
 export class GatewayError extends Error {
   constructor(
     readonly code:
