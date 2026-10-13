@@ -73,6 +73,8 @@ export interface RunRecord {
   warned?: boolean;
   /** A person chose to continue past the cap; budget enforcement is waived for this run. */
   capWaived?: boolean;
+  /** A person gave the final approval a `review`-mode run needs before it can complete (M4.9). Cleared by a re-plan. */
+  finalApproved?: boolean;
   idempotencyKey?: string;
 }
 

@@ -198,8 +198,10 @@ export const pack = z.object({
   }),
   trust,
   engine: z.object({ requires: z.string(), compatible: z.boolean() }),
-  methodology,
-  roster: z.array(rosterEntry),
+  /** Deprecated (D16): phases, gates and loop caps are now the orchestrator's plan and platform policy. Read until the SDLC pack is ported. */
+  methodology: methodology.optional(),
+  /** Deprecated (D16): superseded by `orchestrator` and `agents`. */
+  roster: z.array(rosterEntry).optional(),
   /** The agent graph: one orchestrator and a catalogue of agents wired by `subAgents`. Takes precedence over `roster` for `native` delegation. */
   orchestrator: z.string().optional(),
   agents: z.record(z.string(), packAgent).optional(),

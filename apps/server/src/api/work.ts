@@ -451,7 +451,7 @@ export function workHandlers(o: WorkOptions): Handlers {
       const mean = (xs: number[]) =>
         xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
       return {
-        phases: pack.methodology.phases.map((p) => ({
+        phases: (pack.methodology?.phases ?? []).map((p) => ({
           id: p.id,
           label: p.label,
           agentRoles: p.roles,

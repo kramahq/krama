@@ -22,7 +22,7 @@ export interface WorkerEnv {
 export async function ensureWorker(
   env: WorkerEnv,
   run: Run,
-  resolved: ResolvedRole,
+  resolved: ResolvedRole & { spawn?: (run: Run) => Promise<SpawnSpec> },
   assignment: Agent['assignment'] = { runId: run.id },
 ): Promise<AgentRef> {
   const runtime = env.ports.agents;
@@ -30,6 +30,18 @@ export async function ensureWorker(
   const slot = `${run.id}:${resolved.role}`;
   let agentId = env.state.agents.get(slot);
   if (!agentId || !runtime.ref(agentId)) {
+    // A role of a graph pack starts from its own spec (its config and persona); a roster role from its definition.
+    if (resolved.spawn) {
+      agentId = (await runtime.spawn(await resolved.spawn(run))).id;
+      env.state.agents.set(slot, agentId);
+      const started = runtime.ref(agentId);
+      if (!started)
+        throw new DomainError(
+          'not_found',
+          `The ${resolved.role} agent stopped right after starting`,
+        );
+      return started;
+    }
     const extras = env.directory.extras?.(resolved.definition, run.id);
     const spawned = await runtime.spawn({
       definition:

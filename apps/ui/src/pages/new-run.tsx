@@ -223,7 +223,9 @@ export function NewRunPage() {
           </div>
           <p className="m-0 text-xs text-ink3">
             {mode === 'review'
-              ? 'Review pauses for the pack’s required reviews and decisions requested by agents. A final human approval is not guaranteed yet.'
+              ? pack?.methodology
+                ? 'Review pauses for the pack’s required reviews and decisions requested by agents.'
+                : 'Review asks a person for one final approval before the run completes, and pauses for decisions requested by agents.'
               : 'Autopilot skips optional reviews. Required decisions still pause the run.'}
           </p>
           <div className="flex flex-col gap-2">

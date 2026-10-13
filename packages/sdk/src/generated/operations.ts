@@ -3778,7 +3778,7 @@ export interface OperationTypes {
         source: { type: 'git'; url: string; ref: string; sha: string; path?: string };
         trust: 'trusted' | 'verified' | 'untrusted' | 'blocked';
         engine: { requires: string; compatible: boolean };
-        methodology: {
+        methodology?: {
           id: string;
           name: string;
           description?: string;
@@ -3816,7 +3816,7 @@ export interface OperationTypes {
           iteration?: { unit: string; label: string };
           guidance?: string;
         };
-        roster: {
+        roster?: {
           role: string;
           select: { definitionId?: string; capabilities?: string[]; backend?: string };
           count?: number;
@@ -3945,7 +3945,7 @@ export interface OperationTypes {
       source: { type: 'git'; url: string; ref: string; sha: string; path?: string };
       trust: 'trusted' | 'verified' | 'untrusted' | 'blocked';
       engine: { requires: string; compatible: boolean };
-      methodology: {
+      methodology?: {
         id: string;
         name: string;
         description?: string;
@@ -3983,7 +3983,7 @@ export interface OperationTypes {
         iteration?: { unit: string; label: string };
         guidance?: string;
       };
-      roster: {
+      roster?: {
         role: string;
         select: { definitionId?: string; capabilities?: string[]; backend?: string };
         count?: number;
@@ -4145,7 +4145,7 @@ export interface OperationTypes {
       source: { type: 'git'; url: string; ref: string; sha: string; path?: string };
       trust: 'trusted' | 'verified' | 'untrusted' | 'blocked';
       engine: { requires: string; compatible: boolean };
-      methodology: {
+      methodology?: {
         id: string;
         name: string;
         description?: string;
@@ -4183,7 +4183,7 @@ export interface OperationTypes {
         iteration?: { unit: string; label: string };
         guidance?: string;
       };
-      roster: {
+      roster?: {
         role: string;
         select: { definitionId?: string; capabilities?: string[]; backend?: string };
         count?: number;
@@ -4345,7 +4345,7 @@ export interface OperationTypes {
       source: { type: 'git'; url: string; ref: string; sha: string; path?: string };
       trust: 'trusted' | 'verified' | 'untrusted' | 'blocked';
       engine: { requires: string; compatible: boolean };
-      methodology: {
+      methodology?: {
         id: string;
         name: string;
         description?: string;
@@ -4383,7 +4383,7 @@ export interface OperationTypes {
         iteration?: { unit: string; label: string };
         guidance?: string;
       };
-      roster: {
+      roster?: {
         role: string;
         select: { definitionId?: string; capabilities?: string[]; backend?: string };
         count?: number;
@@ -4509,7 +4509,7 @@ export interface OperationTypes {
       source: { type: 'git'; url: string; ref: string; sha: string; path?: string };
       trust: 'trusted' | 'verified' | 'untrusted' | 'blocked';
       engine: { requires: string; compatible: boolean };
-      methodology: {
+      methodology?: {
         id: string;
         name: string;
         description?: string;
@@ -4547,7 +4547,7 @@ export interface OperationTypes {
         iteration?: { unit: string; label: string };
         guidance?: string;
       };
-      roster: {
+      roster?: {
         role: string;
         select: { definitionId?: string; capabilities?: string[]; backend?: string };
         count?: number;
@@ -4673,7 +4673,7 @@ export interface OperationTypes {
       source: { type: 'git'; url: string; ref: string; sha: string; path?: string };
       trust: 'trusted' | 'verified' | 'untrusted' | 'blocked';
       engine: { requires: string; compatible: boolean };
-      methodology: {
+      methodology?: {
         id: string;
         name: string;
         description?: string;
@@ -4711,7 +4711,7 @@ export interface OperationTypes {
         iteration?: { unit: string; label: string };
         guidance?: string;
       };
-      roster: {
+      roster?: {
         role: string;
         select: { definitionId?: string; capabilities?: string[]; backend?: string };
         count?: number;
@@ -4837,7 +4837,7 @@ export interface OperationTypes {
       source: { type: 'git'; url: string; ref: string; sha: string; path?: string };
       trust: 'trusted' | 'verified' | 'untrusted' | 'blocked';
       engine: { requires: string; compatible: boolean };
-      methodology: {
+      methodology?: {
         id: string;
         name: string;
         description?: string;
@@ -4875,7 +4875,7 @@ export interface OperationTypes {
         iteration?: { unit: string; label: string };
         guidance?: string;
       };
-      roster: {
+      roster?: {
         role: string;
         select: { definitionId?: string; capabilities?: string[]; backend?: string };
         count?: number;

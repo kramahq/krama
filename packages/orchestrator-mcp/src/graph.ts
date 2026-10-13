@@ -300,6 +300,45 @@ export function resolveGraphBackends(
   return { root, backends: [...backends] };
 }
 
+/** A role the relay can delegate to, backed by one agent of a graph pack: how to start it comes with it. */
+export interface GraphRole extends ResolvedRole {
+  /** The spawn spec for this agent in a run: its own config and persona, and no sub-agents (the relay is one level). */
+  spawn(run: Run): Promise<SpawnSpec>;
+}
+
+const NO_CHILDREN: Children = { entries: [], lines: [], secrets: {} };
+
+/**
+ * What the relay (`krama` delegation) can call in a graph pack: the orchestrator's direct agents, one role each, named by
+ * agent id. Krama starts them on first use and they call nobody, so deeper wiring and external agents need `native`
+ * delegation. `undefined` for a pack with only a roster.
+ */
+export function graphRoles(
+  env: Pick<GraphEnv, 'ports' | 'directory' | 'events' | 'subAgents'>,
+  pack: Pack,
+): GraphRole[] | undefined {
+  const plan = planFromPack(pack);
+  if (!plan) return undefined;
+  const graph = graphOf(plan);
+  const roles: GraphRole[] = [];
+  for (const ref of graph.children[graph.orchestrator] ?? []) {
+    if (plan.agents[ref.agent]!.external) continue;
+    const { definition } = managed(env, pack, plan, ref.agent);
+    roles.push({
+      role: ref.agent,
+      definition: {
+        ...definition,
+        description: plan.agents[ref.agent]!.description ?? definition.description,
+      },
+      backend: definition.backend.wrapper,
+      count: 1,
+      alternatives: [],
+      spawn: (run) => specFor(env, run, pack, plan, ref.agent, NO_CHILDREN),
+    });
+  }
+  return roles;
+}
+
 export interface SpecExtras {
   /** Text placed before the agent's hints: for the orchestrator, the core protocol and the run's request. */
   prompt?: string | undefined;
@@ -313,7 +352,7 @@ export interface SpecExtras {
 
 /** Everything needed to start one agent of the graph, given what it may call. */
 export async function specFor(
-  env: GraphEnv,
+  env: Pick<GraphEnv, 'ports' | 'directory' | 'events' | 'subAgents'>,
   run: Run,
   pack: Pack,
   plan: GraphPlan,

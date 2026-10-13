@@ -5,6 +5,8 @@ import { DomainError } from './errors.js';
 export type EffectKind =
   | 'advance'
   | 'advance_autopilot'
+  /** The final approval of a run in review mode: the run may now complete. */
+  | 'finalize'
   | 'loop_back'
   | 'halt'
   | 'answer'
@@ -22,6 +24,7 @@ export type EffectKind =
 const POSITIVE: readonly EffectKind[] = [
   'advance',
   'advance_autopilot',
+  'finalize',
   'accept_memory',
   'proceed',
 ];

@@ -138,7 +138,7 @@ export function TeamPanel({ pack, run }: { pack: Pack | undefined; run?: Run }) 
             shared={shared}
           />
         </ul>
-      ) : pack?.roster.length ? (
+      ) : pack?.roster?.length ? (
         <>
           <p className="mb-2 text-xs text-ink3">
             Role-based pack. Agent backends are resolved when the run starts.

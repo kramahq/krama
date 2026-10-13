@@ -172,13 +172,14 @@ function Guardrails({ run }: { run: Run }) {
       {chip(
         ic,
         run.mode === 'review'
-          ? 'Review: pack reviews and requested decisions'
+          ? 'Review: required reviews and approvals'
           : 'Autopilot: required decisions still pause',
         'mode',
       )}
       {backends.length > 0 && chip(ic, `Backend policy: ${backends.join(', ')}`, 'be')}
       <p className="m-0 basis-full text-xs text-ink3">
-        {run.mode === 'review' && 'Final human approval is not guaranteed yet. '}
+        {run.mode === 'review' &&
+          'A review-mode run of a pack without its own reviews completes only after a final human approval. '}
         {run.orchestrator.delegation === 'native' &&
           'Native calls may already be in progress when reported spend reaches the cap.'}
       </p>

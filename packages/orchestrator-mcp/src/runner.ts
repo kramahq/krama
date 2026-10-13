@@ -12,6 +12,7 @@ import {
 } from '@kramahq/engine';
 import {
   childrenOf,
+  graphRoles,
   graphOf,
   planFromPack,
   planFromRoster,
@@ -404,17 +405,12 @@ export class OrchestratorRunner implements RunExecutor {
     // Runs created before delegation modes existed relayed through Krama.
     const mode = run.orchestrator.delegation ?? 'krama';
     const declared = planFromPack(pack);
-    if (declared && mode !== 'native')
-      throw new DomainError(
-        'invalid_graph',
-        'This pack declares an agent graph, which needs native delegation: the relay still works from a roster only',
-      );
     // In the relay the workers start on first delegation, so a running orchestrator needs nothing more.
     if (existing && mode !== 'native') return existing;
 
     const roster = declared
       ? []
-      : resolveRoster(pack.roster, directory.definitions(), {
+      : resolveRoster(pack.roster ?? [], directory.definitions(), {
           backendUsable: (b) => directory.backendUsable(b),
         }).resolved;
     const orchestrator = declared
@@ -427,7 +423,29 @@ export class OrchestratorRunner implements RunExecutor {
       );
 
     let spec: SpawnSpec;
-    if (mode === 'native') {
+    if (declared && mode !== 'native') {
+      // The relay over a graph pack: the orchestrator delegates to its direct agents by name, through Krama, and Krama
+      // starts each on first use. They call nobody themselves, which is what `native` delegation is for.
+      const relayEnv = { ports, directory, subAgents: this.o.subAgents, events: undefined };
+      const roles = graphRoles(relayEnv, pack) ?? [];
+      mcp.tokens.revokeRun(run.id);
+      spec = await specFor(
+        relayEnv,
+        run,
+        pack,
+        declared,
+        declared.orchestrator,
+        { entries: [], lines: [], secrets: {} },
+        {
+          prompt: renderOrchestratorPrompt({ run, pack, roster: roles }),
+          hints: false, // the prompt already lists the roles it can delegate to
+          governance: {
+            baseUrl: this.o.mcpBaseUrl,
+            token: mcp.tokens.issue(run.id, undefined, mode),
+          },
+        },
+      );
+    } else if (mode === 'native') {
       // The orchestrator calls its agents itself, so every agent it can reach must be up and addressable first, leaves
       // first, and each parent's sub-agent config is generated from exactly what the graph lets it call. Doing this at
       // every turn is the health check: a dead agent is brought back where it was.

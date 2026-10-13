@@ -11,6 +11,7 @@ import {
   system,
   until,
   user,
+  worker,
   type System,
 } from './runner-rig.js';
 
@@ -436,12 +437,6 @@ describe('a graph that cannot run', () => {
     const s = await make(graphPack(agents));
     expect(await blockedWith(s)).toContain('git sources are loaded by the pack loader');
   });
-
-  it('needs native delegation: the relay only works from a roster', async () => {
-    const s = await make(graphPack(), { defaultDelegation: 'krama' });
-    expect(await blockedWith(s)).toContain('needs native delegation');
-    expect(s.p.agents.spawned).toEqual([]);
-  });
 });
 
 describe('hints', () => {
@@ -521,5 +516,116 @@ describe('what a graph pack will really run is known before the run exists (#35)
         user,
       ),
     ).rejects.toMatchObject({ code: 'invalid_option' });
+  });
+});
+
+/** An agents-only pack: a graph with no methodology and no roster (D16). */
+const agentsOnly = (): Pack => {
+  const p = graphPack();
+  delete p.methodology;
+  delete p.roster;
+  return p;
+};
+
+describe('an agents-only pack completes in both delegation modes (M4.9)', () => {
+  const create = (s: System, mode: 'review' | 'autopilot') =>
+    s.engine.runs
+      .create(
+        { packId: 'pack_demo', input: { text: 'Do the work' }, mode, budget: { max: 10 } },
+        user,
+      )
+      .then((r) => r.id);
+
+  /** The orchestrator plans two phases, delegates to two of its agents by name, and records both phases. */
+  const work = (s: System) =>
+    playOrchestrator(s, async (c) => {
+      const first = (await call(c, 'get_run')).data;
+      expect(first.phases.map((p: { id: string }) => p.id)).toEqual(['run']);
+      await call(c, 'set_plan', {
+        phases: [
+          { id: 'research', label: 'Research' },
+          { id: 'write', label: 'Write', dependsOn: ['research'] },
+        ],
+      });
+      expect((await call(c, 'get_run')).data.currentPhaseIds).toEqual(['research']);
+      await call(c, 'delegate_to_agent', {
+        phaseId: 'research',
+        role: 'researcher',
+        task: 'Look up',
+      });
+      await call(c, 'record_phase_outcome', {
+        phaseId: 'research',
+        status: 'success',
+        reason: 'found it',
+        gating: 'continue',
+      });
+      await call(c, 'delegate_to_agent', { phaseId: 'write', role: 'author', task: 'Write it' });
+      await call(c, 'record_phase_outcome', {
+        phaseId: 'write',
+        status: 'success',
+        reason: 'written',
+        gating: 'continue',
+      });
+    });
+
+  it('relay (krama): autopilot completes, agents start on first use, and nobody else starts', async () => {
+    const s = await make(agentsOnly(), { defaultDelegation: 'krama' });
+    const runId = await create(s, 'autopilot');
+    s.p.gateway.queue('researcher', worker('Facts'));
+    s.p.gateway.queue('author', worker('Draft'));
+    s.p.gateway.queue('orchestrator', work(s));
+    await s.runner.start(runId);
+    await until(async () => (await statusOf(s, runId)) === 'completed');
+
+    const roles = s.p.agents.spawned.map((x) => x.definition.role);
+    expect(roles).toContain('researcher');
+    expect(roles).toContain('author');
+    // Not the reviewer (never asked for), not the external vendor, not the unreachable stray.
+    expect(roles).not.toContain('reviewer');
+    expect(roles).not.toContain('stray');
+    const orch = s.p.agents.spawned.find((x) => x.definition.role === 'orchestrator')!;
+    expect(orch.systemPrompt).toContain('Agents you can delegate to');
+    expect(orch.systemPrompt).toContain('**researcher**');
+    expect(orch.systemPrompt).not.toContain('Methodology:');
+    expect(orch.systemPrompt).toContain('set_plan');
+    expect(s.errors).toEqual([]);
+  });
+
+  it('relay (krama): review mode waits for the final approval, then completes', async () => {
+    const s = await make(agentsOnly(), { defaultDelegation: 'krama' });
+    const runId = await create(s, 'review');
+    s.p.gateway.queue('researcher', worker('Facts'));
+    s.p.gateway.queue('author', worker('Draft'));
+    s.p.gateway.queue('orchestrator', work(s));
+    await s.runner.start(runId);
+    await until(async () => (await statusOf(s, runId)) === 'awaiting_decision');
+    await new Promise((r) => setTimeout(r, 150));
+    expect(await statusOf(s, runId)).toBe('awaiting_decision');
+
+    const dec = (await s.p.store.decisions.list({ runId, status: ['pending'] })).items[0]!.value
+      .decision;
+    expect(dec.title).toBe('Final approval');
+    await s.engine.decisions.resolve(dec.id, { optionId: 'approve' }, user);
+    await until(async () => (await statusOf(s, runId)) === 'completed');
+  });
+
+  it('native: the same pack completes, with its agents started up front', async () => {
+    const s = await make(agentsOnly(), { defaultDelegation: 'native' });
+    const runId = await create(s, 'autopilot');
+    s.p.gateway.queue(
+      'orchestrator',
+      playOrchestrator(s, async (c) => {
+        await call(c, 'set_plan', { phases: [{ id: 'all', label: 'All of it' }] });
+        await call(c, 'record_phase_outcome', {
+          phaseId: 'all',
+          status: 'success',
+          reason: 'done',
+          gating: 'continue',
+        });
+      }),
+    );
+    await s.runner.start(runId);
+    await until(async () => (await statusOf(s, runId)) === 'completed');
+    expect(s.p.agents.spawned.map((x) => x.definition.id)).toContain('researcher');
   });
 });
