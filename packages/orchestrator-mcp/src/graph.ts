@@ -20,6 +20,7 @@ import {
   type SubAgentsOptions,
 } from './subagents.js';
 import type { AgentDirectory } from './tools.js';
+import { mcpEntryFor } from './tokens.js';
 
 /** The id the orchestrator gets in a graph built from a roster. */
 export const ORCHESTRATOR_ID = 'orchestrator';
@@ -252,6 +253,8 @@ export interface SpecExtras {
   hints?: boolean;
   mcp?: Record<string, unknown> | undefined;
   env?: Record<string, string> | undefined;
+  /** Give the agent Krama's own MCP server, in the shape its backend reads (see `mcpEntryFor`). */
+  governance?: { baseUrl: string; token: string } | undefined;
 }
 
 /** Everything needed to start one agent of the graph, given what it may call. */
@@ -306,8 +309,16 @@ export async function specFor(
       : {}),
     ...(sink ? { events: sink } : {}),
   };
-  const mcp = { ...(ext?.mcp ?? {}), ...(extra.mcp ?? {}) };
-  const spawnEnv = { ...(ext?.env ?? {}), ...childEnv, ...(extra.env ?? {}) };
+  const gov = extra.governance
+    ? mcpEntryFor(
+        extra.governance.baseUrl,
+        extra.governance.token,
+        undefined,
+        definition.backend.wrapper,
+      )
+    : undefined;
+  const mcp = { ...(ext?.mcp ?? {}), ...(gov?.mcp ?? {}), ...(extra.mcp ?? {}) };
+  const spawnEnv = { ...(ext?.env ?? {}), ...childEnv, ...(gov?.env ?? {}), ...(extra.env ?? {}) };
   return {
     definition,
     workspace: { mode: 'shared', key: run.id },
