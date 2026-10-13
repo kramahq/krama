@@ -61,7 +61,12 @@ export function satisfies(p: Principal, perm: string): boolean {
   if (perm === 'public' || perm === 'any') return true;
   const need = perm
     .split('/')
-    .map((a) => rank(a.replace(/\(.*\)/, '').trim()))
+    // `owner` is the person who made the thing (an operation, say), not a role: any signed-in caller passes the route and
+    // the handler checks it is theirs. Everything else is a role.
+    .map((a) => {
+      const name = a.replace(/\(.*\)/, '').trim();
+      return name === 'owner' ? rank('viewer') : rank(name);
+    })
     .filter((r) => r >= 0);
   if (!need.length) return false; // an unknown requirement is never silently granted
   const has = Math.max(-1, ...p.roles.map(rank));

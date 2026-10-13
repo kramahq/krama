@@ -1,5 +1,7 @@
 import { PROBLEM_CODES, type Problem } from '@kramahq/contract';
 import { DomainError, VersionConflictError } from '@kramahq/engine';
+import { GitError } from '@kramahq/git';
+import { PackError } from '../packs/manager.js';
 import { z } from 'zod';
 
 export const PROBLEM_TYPE_BASE = 'https://kramahq.dev/problems/';
@@ -85,6 +87,34 @@ export function toProblem(err: unknown, traceId: string): ApiProblem {
       traceId,
       ...(fieldErrors(err.details?.errors) ? { errors: fieldErrors(err.details?.errors)! } : {}),
     });
+  if (err instanceof PackError)
+    return new ApiProblem(
+      err.code === 'invalid'
+        ? 'validation_failed'
+        : err.code === 'blocked'
+          ? 'pack_blocked'
+          : err.code,
+      err.message,
+      {
+        traceId,
+        ...(err.issues.length
+          ? { errors: err.issues.map((i) => ({ field: i.path ?? 'pack', message: i.message })) }
+          : {}),
+      },
+    );
+  // A source that is not allowed, signed or honest is a refusal; one that cannot be found or reached is the caller's input.
+  if (err instanceof GitError)
+    return new ApiProblem(
+      err.code === 'refused'
+        ? 'pack_blocked'
+        : err.code === 'auth_failed'
+          ? 'forbidden'
+          : err.code === 'git_missing'
+            ? 'internal'
+            : 'validation_failed',
+      err.code === 'git_missing' ? undefined : err.message,
+      { traceId },
+    );
   if (err instanceof VersionConflictError)
     return new ApiProblem(
       'precondition_failed',

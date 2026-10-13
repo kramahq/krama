@@ -763,7 +763,7 @@ export const OPERATIONS = {
     path: '/packs/{id}/files',
     tag: 'Packs',
     perm: 'viewer',
-    kind: 'raw',
+    kind: 'json',
     status: 200,
     params: ['id'],
     idempotent: false,
@@ -4362,7 +4362,7 @@ export interface OperationTypes {
   previewPackUpdate: {
     params: { id: string };
     query: undefined;
-    body: undefined;
+    body: { ref?: string };
     response: {
       id: string;
       type?: string;
@@ -5064,7 +5064,7 @@ export interface OperationTypes {
     params: { id: string };
     query: { path?: string };
     body: undefined;
-    response: Response;
+    response: { [key: string]: unknown };
   };
   /** GET /packs/{id}/versions: Installed history */
   listPackVersions: {
