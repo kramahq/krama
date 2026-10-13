@@ -337,6 +337,23 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
       expect(t.audit.map((a) => a.kind)).toEqual(['pack.installed', 'pack.updated']);
     });
 
+    it('serves the version a run started with after the pack has moved on', async () => {
+      const t = await installed();
+      await advance(t);
+      const up = await t.manager.previewUpdate('pack_notes', { ref: 'v0.2.0' });
+      await t.manager.update(
+        'pack_notes',
+        { previewId: up.previewId, manifestDigest: up.manifestDigest, consent },
+        admin,
+      );
+      expect((await t.manager.get('pack_notes'))!.version).toBe('0.2.0');
+      const old = await t.manager.get('pack_notes', t.first.sha);
+      expect(old).toMatchObject({ version: '0.1.0', source: { sha: t.first.sha, ref: 'v0.1.0' } });
+      expect((await t.manager.get('pack_notes', up.sha))!.version).toBe('0.2.0');
+      // A commit this pack was never installed at is not served, rather than answered with the current version.
+      expect(await t.manager.get('pack_notes', 'deadbeef')).toBeUndefined();
+    });
+
     it('rolls back to the version before, with its agents exactly as they were', async () => {
       const t = await installed();
       await advance(t);

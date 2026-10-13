@@ -399,7 +399,7 @@ export class OrchestratorRunner implements RunExecutor {
     if (!runtime) throw new DomainError('not_found', 'No agent runtime is configured');
     const existing = d.agentId ? runtime.ref(d.agentId) : undefined;
 
-    const pack = await ports.packs.get(run.pack.id);
+    const pack = await ports.packs.get(run.pack.id, run.pack.sha);
     if (!pack) throw new DomainError('not_found', `Pack ${run.pack.id} not found`);
 
     // Runs created before delegation modes existed relayed through Krama.
