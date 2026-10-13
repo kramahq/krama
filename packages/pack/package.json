@@ -21,5 +21,11 @@
     "build": "tsc -b",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "@kramahq/contract": "workspace:*",
+    "@kramahq/engine": "workspace:*",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
   }
 }
