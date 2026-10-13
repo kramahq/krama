@@ -144,6 +144,9 @@ export const auditEntry = z.object({
   subject: z.object({ type: z.string(), id: z.string() }),
   detail: z.record(z.string(), z.unknown()).optional(),
   ip: z.string().optional(),
+  /** Position and hash on the control chain, to compare with an export or a seal. Absent on entries that predate it. */
+  seq: z.number().int().optional(),
+  hash: z.string().optional(),
 });
 export type AuditEntry = z.infer<typeof auditEntry>;
 

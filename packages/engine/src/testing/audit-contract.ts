@@ -121,6 +121,46 @@ export function auditLedgerContract(h: Harness, make: () => Promise<AuditLedgerU
       expect(await ledger.read('run:none')).toEqual([]);
     });
 
+    it('reads newest first and pages backwards, and filters by actor, kind and range', async () => {
+      const { ledger } = await make();
+      const rows: [string, string, string][] = [
+        ['run.created', 'u_a', '2026-01-01'],
+        ['run.updated', 'u_b', '2026-01-02'],
+        ['runner.started', 'u_a', '2026-01-03'],
+        ['decision.resolved', 'u_b', '2026-01-04'],
+        ['run.stop', 'u_a', '2026-01-05'],
+      ];
+      for (const [kind, who, day] of rows)
+        await ledger.append(
+          draft('control', kind, {
+            actor: { type: 'user', id: who },
+            source: 'api',
+            at: `${day}T00:00:00.000Z`,
+          }),
+        );
+      const seqs = async (o: Parameters<AuditLedger['read']>[1]) =>
+        (await ledger.read('control', o)).map((r) => r.seq);
+
+      expect(await seqs({ order: 'desc', limit: 2 })).toEqual([5, 4]);
+      expect(await seqs({ order: 'desc', limit: 2, beforeSeq: 4 })).toEqual([3, 2]);
+      expect(await seqs({ order: 'desc', limit: 2, beforeSeq: 2 })).toEqual([1]);
+      expect(await seqs({ actor: 'u_a' })).toEqual([1, 3, 5]);
+      // A kind matches itself and what is under it, never a longer word that merely starts the same.
+      expect(await seqs({ kind: 'run' })).toEqual([1, 2, 5]);
+      expect(await seqs({ kind: 'run.created' })).toEqual([1]);
+      expect(await seqs({ kind: 'runn' })).toEqual([]);
+      expect(await seqs({ actor: 'u_a', kind: 'run', order: 'desc' })).toEqual([5, 1]);
+      expect(
+        await seqs({
+          from: '2026-01-02T00:00:00.000Z',
+          to: '2026-01-04T00:00:00.000Z',
+          order: 'desc',
+        }),
+      ).toEqual([4, 3, 2]);
+      // A kind with characters that mean something to a pattern is taken literally.
+      expect(await seqs({ kind: 'run%' })).toEqual([]);
+    });
+
     it('tells a subscriber about a record only after it is stored', async () => {
       const { ledger } = await make();
       const seen: number[] = [];

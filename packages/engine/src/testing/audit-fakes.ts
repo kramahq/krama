@@ -7,6 +7,7 @@ import type {
   AuditReadOptions,
   AuditVerifyOptions,
 } from '../ports/index.js';
+import { kindMatches } from '../ports/index.js';
 
 /** How a test reaches under a ledger to change it the way an attacker with write access to the table would. */
 export interface AuditTamper {
@@ -96,15 +97,17 @@ export class InMemoryAuditLedger implements AuditLedger {
   }
 
   async read(chain: string, o: AuditReadOptions = {}) {
-    return (this.chainsMap.get(chain) ?? [])
-      .filter(
-        (r) =>
-          r.seq > (o.afterSeq ?? 0) &&
-          (o.from === undefined || r.at >= o.from) &&
-          (o.to === undefined || r.at <= o.to),
-      )
-      .slice(0, o.limit ?? 1000)
-      .map((r) => structuredClone(r));
+    const rows = (this.chainsMap.get(chain) ?? []).filter(
+      (r) =>
+        r.seq > (o.afterSeq ?? 0) &&
+        (o.beforeSeq === undefined || r.seq < o.beforeSeq) &&
+        (o.actor === undefined || r.actor.id === o.actor) &&
+        (o.kind === undefined || kindMatches(r.kind, o.kind)) &&
+        (o.from === undefined || r.at >= o.from) &&
+        (o.to === undefined || r.at <= o.to),
+    );
+    if (o.order === 'desc') rows.reverse();
+    return rows.slice(0, o.limit ?? 1000).map((r) => structuredClone(r));
   }
 
   async head(chain: string) {

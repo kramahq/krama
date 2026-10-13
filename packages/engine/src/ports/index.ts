@@ -215,10 +215,22 @@ export interface AuditReadOptions {
   /** Records strictly after this sequence number. */
   afterSeq?: number;
   limit?: number;
+  /** Records strictly before this sequence number (with `order: 'desc'`, the cursor of a newest-first page). */
+  beforeSeq?: number;
+  /** `asc` (default) is the order they were written; `desc` is newest first. The limit applies after ordering. */
+  order?: 'asc' | 'desc';
+  /** Only records by this actor id. */
+  actor?: string;
+  /** Only this kind, or a kind under it (`run` matches `run` and `run.created`, not `runner`). */
+  kind?: string;
   /** Time range on `at`, inclusive. */
   from?: string;
   to?: string;
 }
+
+/** Whether a record's kind is `kind` or a kind under it. */
+export const kindMatches = (recordKind: string, kind: string): boolean =>
+  recordKind === kind || recordKind.startsWith(`${kind}.`);
 
 export interface AuditHead {
   seq: number;
