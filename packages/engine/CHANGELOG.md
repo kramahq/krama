@@ -1,5 +1,25 @@
 # @kramahq/engine
 
+## 0.4.0
+
+### Minor Changes
+
+- 720b872: `GET /audit` now serves the hash-chained control record: who did what, newest first, filtered by actor, action (and the actions under it) and a time range, with a cursor that pages backwards. Entries carry their chain position and hash. The ledger's `read` gained `order`, `beforeSeq`, `actor` and `kind`.
+- 25ea47f: Record who did what on the hash-chained control record. Every audited command (run created, changed, paused, stopped, decision resolved, plan set) now writes a control record naming the principal, with their highest role (`ActorRef.role`, new and optional), in the same database transaction as the change: if the change rolls back so does the record, and subscribers hear of it only after the commit. A command whose record cannot be written does not happen.
+- c66ef1d: Work out what a graph pack will really run before accepting its run: the run now records the backend and model its orchestrator will start with, and the backend policy is checked for every agent Krama starts for it. A caller's orchestrator backend, model or definition override on a graph pack is refused with a clear error instead of being recorded and ignored.
+- 1a4d17f: Run a pack with no methodology. `methodology` and `roster` are now optional (deprecated). A run of such a pack has one implicit phase until the orchestrator declares phases with the new `set_plan` tool (it may revise phases that have not started). Loop-backs are capped by platform policy, and in review mode the engine raises one final approval before the run can complete. A graph pack now also runs with relay (`krama`) delegation: the orchestrator delegates to its direct agents by name.
+- 3784a7b: Check a new run's `input.params` against its pack's `inputsSchema` when the run is created, so a missing or wrongly typed required value is refused with a field-level error for every caller, not only the New Run form. A pack whose schema cannot be applied refuses to start a run instead of skipping the check.
+
+### Patch Changes
+
+- 3ffd71b: Keep which agent and backend reported each usage entry, so the run cost report groups a native worker's spend under that worker instead of the orchestrator. Entries without a reporter still count toward the orchestrator, and missing cost stays unreported, never estimated.
+- Updated dependencies [720b872]
+- Updated dependencies [25ea47f]
+- Updated dependencies [1a4d17f]
+- Updated dependencies [5591c50]
+- Updated dependencies [4bf5632]
+  - @kramahq/contract@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

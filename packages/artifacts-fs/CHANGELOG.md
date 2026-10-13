@@ -1,5 +1,20 @@
 # @kramahq/artifacts-fs
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [720b872]
+- Updated dependencies [25ea47f]
+- Updated dependencies [c66ef1d]
+- Updated dependencies [1a4d17f]
+- Updated dependencies [5591c50]
+- Updated dependencies [3784a7b]
+- Updated dependencies [4bf5632]
+- Updated dependencies [3ffd71b]
+  - @kramahq/contract@0.3.0
+  - @kramahq/engine@0.4.0
+
 ## 0.1.2
 
 ### Patch Changes
