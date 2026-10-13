@@ -144,10 +144,17 @@ describe('roles', () => {
     expect(satisfies(as('admin'), 'admin')).toBe(true);
     expect(satisfies(as('operator'), 'admin')).toBe(false);
   });
-  it('accepts any alternative, ignores the (own) qualifier, and treats owner as admin', () => {
+  it('accepts any alternative, ignores the (own) qualifier, and lets the owner of a thing through the route', () => {
     expect(satisfies(as('requester'), 'requester(own)/operator')).toBe(true);
     expect(satisfies(as('viewer'), 'requester(own)/operator')).toBe(false);
     expect(satisfies(as('admin'), 'owner/admin')).toBe(true);
+    // `owner/admin` on an operation: whoever started it can read it (the handler checks it is theirs), not only an admin.
+    expect(satisfies(as('author'), 'owner/admin')).toBe(true);
+    expect(satisfies(as('viewer'), 'owner/admin')).toBe(true);
+    // Someone with no role at all is still not let in.
+    expect(satisfies(as(), 'owner/admin')).toBe(false);
+    // A principal whose role is `owner` is an administrator.
+    expect(satisfies(as('owner'), 'admin')).toBe(true);
   });
   it('needs no role for public and any, and never grants an unknown requirement', () => {
     expect(satisfies(as(), 'public')).toBe(true);

@@ -467,7 +467,7 @@ const asyncOp: Opts = { status: 202, response: operation };
     'previewPackUpdate',
     'Diff against a newer SHA',
     'admin',
-    { ...asyncOp, ...later() },
+    { body: z.object({ ref: z.string().optional() }).optional(), ...asyncOp, ...later() },
   );
   d('POST', '/packs/{id}/update', 'updatePack', 'Update after consent', 'admin', {
     body: installPack,
@@ -490,6 +490,7 @@ const asyncOp: Opts = { status: 202, response: operation };
   });
   d('GET', '/packs/{id}/files', 'getPackFiles', 'Read-only file browser', 'viewer', {
     query: z.object({ path: str }),
+    response: generic,
     ...later(),
   });
   d('GET', '/packs/{id}/versions', 'listPackVersions', 'Installed history', 'viewer', {

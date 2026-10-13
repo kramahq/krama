@@ -19,7 +19,8 @@ import type { BackendCatalog, PackRepository, SecretResolver } from '@kramahq/en
 /** Why a pack operation did not happen, in terms a route can map to a status. */
 export class PackError extends Error {
   constructor(
-    readonly code: 'not_found' | 'conflict' | 'invalid' | 'forbidden',
+    readonly code:
+      'not_found' | 'conflict' | 'invalid' | 'forbidden' | 'blocked' | 'engine_incompatible',
     message: string,
     readonly issues: { severity: 'warn' | 'error'; message: string; path?: string }[] = [],
   ) {
@@ -65,6 +66,9 @@ interface Held {
   packId: string;
   /** The installed pack this preview would replace, if it is an update. */
   updates?: string;
+  compatible: boolean;
+  /** What stopped the pack loading, so installing the preview says why instead of that it is "gone". */
+  errors?: PackPreview['issues'];
   expiresAt: number;
 }
 
@@ -164,7 +168,16 @@ export class PackManager implements PackRepository {
     return [e.current, ...[...e.history].reverse().filter((v) => v !== e.current)];
   }
 
+  /** The directory an installed pack is checked out in (read-only), for browsing its files. */
+  async rootOf(id: string): Promise<string> {
+    if (this.o.builtin?.some((p) => p.id === id))
+      throw new PackError('not_found', `${id} ships with Krama and has no files to browse`);
+    return (await this.loadInstalled(this.entry(id))).dir;
+  }
+
   async manifest(id: string): Promise<unknown> {
+    const builtin = this.o.builtin?.find((p) => p.id === id);
+    if (builtin) return builtin;
     const e = this.entry(id);
     const { load } = await this.loadInstalled(e);
     return load.file;
@@ -303,9 +316,11 @@ export class PackManager implements PackRepository {
       digest: load.digest ?? '',
       packId: manifest.id,
       ...(against ? { updates: against.id } : {}),
+      compatible,
+      ...(load.ok ? {} : { errors: issues.filter((i) => i.severity === 'error') }),
       expiresAt,
     };
-    if (load.ok && compatible) this.previews.set(previewId, held);
+    this.previews.set(previewId, held);
     return { preview, held };
   }
 
@@ -339,6 +354,10 @@ export class PackManager implements PackRepository {
       throw new PackError('conflict', 'That preview is not an update of this pack');
     if (kind === 'install' && held.updates)
       throw new PackError('conflict', 'That preview is an update; update the pack instead');
+    if (held.errors)
+      throw new PackError('invalid', 'This pack has errors and cannot be installed', held.errors);
+    if (!held.compatible)
+      throw new PackError('engine_incompatible', 'This pack needs a different version of Krama');
     return held;
   }
 

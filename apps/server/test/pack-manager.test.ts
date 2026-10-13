@@ -239,7 +239,7 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
         { previewId: bad.previewId, manifestDigest: bad.manifestDigest, consent },
         admin,
       ),
-    ).rejects.toMatchObject({ code: 'conflict' });
+    ).rejects.toMatchObject({ code: 'invalid' });
 
     await t.packs.commit({
       'future/krama-pack.yaml': packText(t.agents.url, '0.1.0').replace('>=0.1.0', '>=9.0.0'),
