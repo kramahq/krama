@@ -18,5 +18,13 @@
     "build": "tsc -b",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint ."
+  },
+  "bin": {
+    "krama": "./dist/main.js"
+  },
+  "dependencies": {
+    "@kramahq/agents": "workspace:*",
+    "@kramahq/git": "workspace:*",
+    "@kramahq/pack": "workspace:*"
   }
 }
