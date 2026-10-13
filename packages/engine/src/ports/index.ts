@@ -474,6 +474,17 @@ export interface BackendCatalog {
   get(id: string): BackendDescriptor | undefined;
 }
 
+/**
+ * What a pack's agent graph will really run, worked out before a run is accepted (#35): the backend and model its
+ * orchestrator starts with, and every backend any agent Krama starts will use. `undefined` for a pack with no graph.
+ * Throws a `DomainError` when the graph cannot be resolved.
+ */
+export interface GraphResolver {
+  resolve(
+    pack: Pack,
+  ): { root: { backend: string; model?: string }; backends: string[] } | undefined;
+}
+
 /** What an agent reports about one task when asked (`GetTask`, `ListTasks`): its state now and its finished artifacts. */
 export interface TaskSnapshot {
   taskId: string;
@@ -569,5 +580,7 @@ export interface Ports {
   executor?: RunExecutor;
   workItems?: readonly WorkItemSource[];
   backends?: BackendCatalog;
+  /** Resolves what a graph pack will run; set once the agent directory exists. */
+  graphs?: GraphResolver;
   agents?: AgentRuntime;
 }

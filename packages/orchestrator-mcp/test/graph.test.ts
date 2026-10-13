@@ -1,8 +1,8 @@
 import type { BackendDescriptor, Pack, PackAgent } from '@kramahq/contract';
 import { StaticSecretResolver } from '@kramahq/engine/testing';
 import { afterEach, describe, expect, it } from 'vitest';
-import { renderAgentsSection } from '../src/index.js';
-import { pack } from './rig.js';
+import { renderAgentsSection, resolveGraphBackends } from '../src/index.js';
+import { def, pack } from './rig.js';
 import {
   call,
   newRun,
@@ -20,7 +20,8 @@ afterEach(async () => {
 });
 
 /** Only the fields the graph code reads. */
-const backend = (id: string, providerKey: string) => ({ id, providerKey }) as BackendDescriptor;
+const backend = (id: string, providerKey: string) =>
+  ({ id, providerKey, mapping: { model: 'model' } }) as unknown as BackendDescriptor;
 const BACKENDS = [backend('a2a-claude', 'claude'), backend('a2a-codex', 'codex')];
 
 const card = (name: string, extra: Record<string, unknown> = {}) => ({
@@ -462,5 +463,63 @@ describe('hints', () => {
   });
   it('is empty for an agent that calls nobody', () => {
     expect(renderAgentsSection([])).toBe('');
+  });
+});
+
+describe('what a graph pack will really run is known before the run exists (#35)', () => {
+  const directory = {
+    definitions: () => [def('author', ['write'])],
+    systemPrompt: () => '',
+    backendUsable: () => true,
+  };
+  const withResolver = async (p: Pack, policy: object = {}) => {
+    const s = await make(p, { defaultDelegation: 'native', ...policy });
+    s.p.graphs = { resolve: (pk) => resolveGraphBackends({ ports: s.p, directory }, pk) };
+    return s;
+  };
+  // The root's own config says Codex and a model; the policy default would have said Claude.
+  const codexRoot = () =>
+    graphPack({
+      ...catalogue(),
+      planner: {
+        ...catalogue().planner!,
+        config: card('planner', { codex: { model: 'gpt-5.5' } }),
+      },
+    });
+
+  it('names the root backend and model, and every backend Krama will start', async () => {
+    const s = await make(codexRoot());
+    expect(resolveGraphBackends({ ports: s.p, directory }, codexRoot())).toEqual({
+      root: { backend: 'a2a-codex', model: 'gpt-5.5' },
+      // planner and researcher and author are Codex, reviewer is Claude; the external vendor is not started.
+      backends: expect.arrayContaining(['a2a-codex', 'a2a-claude']),
+    });
+    expect(resolveGraphBackends({ ports: s.p, directory }, pack())).toBeUndefined();
+  });
+
+  it('records the backend and model that will actually start, not the policy default', async () => {
+    const s = await withResolver(codexRoot());
+    const run = await s.engine.runs.create(
+      { packId: 'pack_demo', input: { text: 'go' }, budget: { max: 10 } },
+      user,
+    );
+    expect(run.orchestrator).toMatchObject({ backend: 'a2a-codex', model: 'gpt-5.5' });
+  });
+
+  it('refuses a run when any agent Krama would start is outside policy', async () => {
+    const s = await withResolver(codexRoot(), { allowedBackends: ['a2a-claude'] });
+    await expect(
+      s.engine.runs.create({ packId: 'pack_demo', input: { text: 'go' } }, user),
+    ).rejects.toMatchObject({ code: 'backend_not_allowed', details: { backend: 'a2a-codex' } });
+  });
+
+  it('says so when a caller tries to override the orchestrator of a graph pack', async () => {
+    const s = await withResolver(codexRoot());
+    await expect(
+      s.engine.runs.create(
+        { packId: 'pack_demo', input: { text: 'go' }, orchestrator: { backend: 'a2a-claude' } },
+        user,
+      ),
+    ).rejects.toMatchObject({ code: 'invalid_option' });
   });
 });
