@@ -132,6 +132,11 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
       src: { url: packs.url, ref: 'v0.1.0', path: 'notes' },
     };
   };
+  const all = (p: { permissions: { id: string }[] }) => ({
+    granted: p.permissions.map((x) => x.id),
+    declined: [] as string[],
+  });
+
   const consent = { granted: ['mcp_server:svc:planner'], declined: [] };
 
   it('previews a pack with what it asks to be allowed, the secrets to bind and its digest, and installs nothing', async () => {
@@ -176,11 +181,14 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
       manager.install({ previewId: p.previewId, manifestDigest: 'f'.repeat(64), consent }, admin),
     ).rejects.toMatchObject({ code: 'conflict' });
     await expect(
-      manager.install({ previewId: 'prev_nope', manifestDigest: p.manifestDigest, consent }, admin),
+      manager.install(
+        { previewId: 'prev_nope', manifestDigest: p.manifestDigest, consent: all(p) },
+        admin,
+      ),
     ).rejects.toMatchObject({ code: 'conflict' });
 
     const pack = await manager.install(
-      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
       admin,
     );
     expect(pack).toMatchObject({
@@ -192,13 +200,16 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
     expect((await manager.get('pack_notes'))!.agents!['writer']).toBeDefined();
     expect((await manager.list()).map((x) => x.id)).toEqual(['pack_notes']);
     await expect(
-      manager.install({ previewId: p.previewId, manifestDigest: p.manifestDigest, consent }, admin),
+      manager.install(
+        { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
+        admin,
+      ),
     ).rejects.toBeInstanceOf(PackError);
     expect(audit).toEqual([
       expect.objectContaining({
         kind: 'pack.installed',
         actor: 'u_admin',
-        detail: expect.objectContaining({ sha: p.sha, consent }),
+        detail: expect.objectContaining({ sha: p.sha, consent: all(p) }),
       }),
     ]);
     expect((await manager.versions('pack_notes')).map((v) => [v.version, v.action])).toEqual([
@@ -210,7 +221,7 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
     const t = await set();
     const p = await t.manager.preview(t.src);
     await t.manager.install(
-      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
       admin,
     );
     rmSync(t.agents.url, { recursive: true, force: true });
@@ -236,7 +247,7 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
     expect(bad.issues.some((i) => i.severity === 'error')).toBe(true);
     await expect(
       t.manager.install(
-        { previewId: bad.previewId, manifestDigest: bad.manifestDigest, consent },
+        { previewId: bad.previewId, manifestDigest: bad.manifestDigest, consent: all(bad) },
         admin,
       ),
     ).rejects.toMatchObject({ code: 'invalid' });
@@ -272,7 +283,7 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
       const t = await set();
       const p = await t.manager.preview(t.src);
       await t.manager.install(
-        { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+        { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
         admin,
       );
       return { ...t, first: p };
@@ -325,7 +336,10 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
         {
           previewId: up.previewId,
           manifestDigest: up.manifestDigest,
-          consent: { granted: ['mcp_server:crm:planner'], declined: [] },
+          consent: {
+            granted: ['mcp_server:crm:planner', 'network:crm.example:planner'],
+            declined: [],
+          },
         },
         admin,
       );
@@ -343,7 +357,7 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
       const up = await t.manager.previewUpdate('pack_notes', { ref: 'v0.2.0' });
       await t.manager.update(
         'pack_notes',
-        { previewId: up.previewId, manifestDigest: up.manifestDigest, consent },
+        { previewId: up.previewId, manifestDigest: up.manifestDigest, consent: all(up) },
         admin,
       );
       expect((await t.manager.get('pack_notes'))!.version).toBe('0.2.0');
@@ -360,7 +374,7 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
       const up = await t.manager.previewUpdate('pack_notes', { ref: 'v0.2.0' });
       await t.manager.update(
         'pack_notes',
-        { previewId: up.previewId, manifestDigest: up.manifestDigest, consent },
+        { previewId: up.previewId, manifestDigest: up.manifestDigest, consent: all(up) },
         admin,
       );
       const nowSha = (await t.manager.get('pack_notes'))!.source.sha;
@@ -403,7 +417,7 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
       const before = await t.manager['o'].sources.lockfile();
       await expect(
         t.manager.install(
-          { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+          { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
           admin,
         ),
       ).rejects.toMatchObject({ code: 'conflict' });
@@ -416,7 +430,7 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
     const t = await set();
     const p = await t.manager.preview(t.src);
     await t.manager.install(
-      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
       admin,
     );
     expect((await t.manager.setEnabled('pack_notes', false, admin)).status).toBe('disabled');
@@ -435,13 +449,108 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
     ]);
   });
 
+  describe('consent', () => {
+    const preview = async () => {
+      const t = await set();
+      const p = await t.manager.preview(t.src);
+      return { ...t, p };
+    };
+    const say = (p: { previewId: string; manifestDigest: string }, c: object) => ({
+      previewId: p.previewId,
+      manifestDigest: p.manifestDigest,
+      consent: c as { granted: string[]; declined: string[] },
+    });
+
+    it('asks for the source too when it is not trusted, and not when it is', async () => {
+      const { p, packs, open, src } = await preview();
+      expect(p.trust).toBe('untrusted');
+      expect(p.permissions.find((x) => x.id.startsWith('source:'))).toMatchObject({
+        kind: 'network',
+        risk: 'high',
+        requestedBy: 'source',
+      });
+      const trusted = await open({ trusted: [`${packs.url.slice(0, 3).toLowerCase()}*`] });
+      const q = await trusted.preview(src);
+      expect(q.trust).toBe('trusted');
+      expect(q.permissions.some((x) => x.id.startsWith('source:'))).toBe(false);
+    });
+
+    it('refuses an install that leaves a permission unanswered, naming it, and keeps the preview for a retry', async () => {
+      const { manager, p } = await preview();
+      const source = p.permissions.find((x) => x.id.startsWith('source:'))!.id;
+      await expect(
+        manager.install(say(p, { granted: [], declined: [] }), admin),
+      ).rejects.toMatchObject({
+        code: 'invalid',
+        message: expect.stringContaining(source),
+      });
+      await expect(
+        manager.install(
+          say(p, { granted: p.permissions.map((x) => x.id).slice(1), declined: [] }),
+          admin,
+        ),
+      ).rejects.toMatchObject({ code: 'invalid' });
+      expect(await manager.list()).toEqual([]);
+      await manager.install(say(p, all(p)), admin);
+      expect(await manager.get('pack_notes')).toBeDefined();
+    });
+
+    it('refuses a permission the pack does not ask for, and a declined one', async () => {
+      const { manager, p } = await preview();
+      await expect(
+        manager.install(
+          say(p, { granted: [...all(p).granted, 'mcp_server:invented:planner'], declined: [] }),
+          admin,
+        ),
+      ).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('invented') });
+      const [first, ...rest] = all(p).granted;
+      await expect(
+        manager.install(say(p, { granted: rest, declined: [first] }), admin),
+      ).rejects.toMatchObject({ code: 'forbidden', message: expect.stringContaining(first!) });
+      expect(await manager.list()).toEqual([]);
+    });
+
+    it('on an update asks only about what is new, and remembers everything allowed', async () => {
+      const { manager, p, agents, packs, src } = await preview();
+      await manager.install(say(p, all(p)), admin);
+      await agents.commit(
+        {
+          'agents/planner/config.json': agentConfig('planner', {
+            mcp: { crm: { type: 'http', url: 'https://crm.example/mcp' } },
+          }),
+        },
+        'planner gains a server',
+      );
+      await packs.commit({ 'notes/krama-pack.yaml': packText(agents.url, '0.2.0') }, 'v0.2.0');
+      await packs.tag('v0.2.0');
+      const up = await manager.previewUpdate('pack_notes', { ref: 'v0.2.0' });
+      // The source is not asked again; the new server and the new host are.
+      const fresh = up.permissions.filter((x) => !all(p).granted.includes(x.id)).map((x) => x.id);
+      expect(fresh.length).toBeGreaterThan(0);
+      await expect(
+        manager.update('pack_notes', say(up, { granted: [], declined: [] }), admin),
+      ).rejects.toMatchObject({
+        code: 'invalid',
+      });
+      const pack = await manager.update(
+        'pack_notes',
+        say(up, { granted: fresh, declined: [] }),
+        admin,
+      );
+      expect(pack.version).toBe('0.2.0');
+      const now = (await manager.versions('pack_notes'))[0]!;
+      expect(now.consent!.granted.sort()).toEqual(up.permissions.map((x) => x.id).sort());
+      expect(src.path).toBe('notes');
+    });
+  });
+
   it('will not uninstall a pack while a run is using it', async () => {
     let active = 2;
     const t = await set();
     const manager = await t.open({ activeRuns: async () => active });
     const p = await manager.preview(t.src);
     await manager.install(
-      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+      { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
       admin,
     );
     await expect(manager.uninstall('pack_notes', admin)).rejects.toMatchObject({
@@ -464,7 +573,10 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
     expect((await m.get('pack_notes'))!.version).toBe('9.9.9');
     const p = await m.preview(t.src);
     await expect(
-      m.install({ previewId: p.previewId, manifestDigest: p.manifestDigest, consent }, admin),
+      m.install(
+        { previewId: p.previewId, manifestDigest: p.manifestDigest, consent: all(p) },
+        admin,
+      ),
     ).rejects.toMatchObject({ code: 'conflict' });
   });
 });
