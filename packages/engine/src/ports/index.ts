@@ -558,7 +558,8 @@ export interface RunExecutor {
 // ---- Catalog and sources ---------------------------------------------------
 
 export interface PackRepository {
-  get(id: string): Promise<Pack | undefined>;
+  /** With a `sha`, that pinned version (a run keeps the one it started with); without, the current one. */
+  get(id: string, sha?: string): Promise<Pack | undefined>;
   list(): Promise<Pack[]>;
 }
 

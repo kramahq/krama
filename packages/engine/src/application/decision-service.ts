@@ -302,7 +302,7 @@ export class DecisionService {
       if (phase && phase.status === 'awaiting_decision') {
         const siblings = await this.pendingFor(tx, run.id, d.id, phase.id);
         if (siblings.length === 0) {
-          const pack = await c.p.packs.get(run.pack.id);
+          const pack = await c.p.packs.get(run.pack.id, run.pack.sha);
           if (pack) {
             // Safety net: a required gate can never be skipped, whatever the orchestrator did.
             const resolved = (

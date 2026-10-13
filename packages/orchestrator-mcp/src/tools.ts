@@ -78,7 +78,7 @@ const loadRun = async (c: ToolCtx): Promise<Run> => {
   return r.value.run;
 };
 const packOf = async (c: ToolCtx, run: Run): Promise<Pack> => {
-  const p = await c.ports.packs.get(run.pack.id);
+  const p = await c.ports.packs.get(run.pack.id, run.pack.sha);
   if (!p) throw new DomainError('not_found', `Pack ${run.pack.id} not found`);
   return p;
 };

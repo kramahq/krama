@@ -508,8 +508,10 @@ export class InMemoryArtifactStore implements ArtifactStore {
 
 export class FakePackRepository implements PackRepository {
   constructor(private readonly packs: Pack[]) {}
-  async get(id: string) {
-    return this.packs.find((p) => p.id === id);
+  /** Several versions of one pack may be held; without a `sha` the last is the current one. */
+  async get(id: string, sha?: string) {
+    const all = this.packs.filter((p) => p.id === id);
+    return sha ? all.find((p) => p.source.sha === sha) : all[all.length - 1];
   }
   async list() {
     return [...this.packs];

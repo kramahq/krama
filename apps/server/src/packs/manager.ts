@@ -155,11 +155,18 @@ export class PackManager implements PackRepository {
     return [...(this.o.builtin ?? []), ...installed];
   }
 
-  async get(id: string): Promise<Pack | undefined> {
+  /** With a `sha`, the version pinned at that commit (a run keeps the one it started with); without, the current one. */
+  async get(id: string, sha?: string): Promise<Pack | undefined> {
     const builtin = this.o.builtin?.find((p) => p.id === id);
     if (builtin) return builtin;
     const e = this.entries.get(id);
-    return e ? this.packOf(e).catch(() => undefined) : undefined;
+    if (!e) return undefined;
+    const v = sha ? this.versionAt(e, sha) : e.current;
+    return v ? this.packOf(e, v).catch(() => undefined) : undefined;
+  }
+
+  private versionAt(e: Entry, sha: string): PackVersion | undefined {
+    return e.current.sha === sha ? e.current : [...e.history].reverse().find((v) => v.sha === sha);
   }
 
   /** Every version this pack has been, newest first. */
@@ -207,22 +214,25 @@ export class PackManager implements PackRepository {
   }
 
   /** The pack as pinned: from the lock file, with no network unless a commit is missing from the mirror. */
-  private async loadInstalled(e: Entry): Promise<{ load: PackLoad; dir: string }> {
+  private async loadInstalled(
+    e: Entry,
+    v: PackVersion = e.current,
+  ): Promise<{ load: PackLoad; dir: string }> {
     // By the exact commit, not through a ref that may have moved or been put back since.
-    const dir = await this.o.sources.at(e.source, e.current.sha);
+    const dir = await this.o.sources.at(v.source, v.sha);
     return { load: await loadPackDir(dir, this.loadEnv('locked')), dir };
   }
 
-  private async packOf(e: Entry): Promise<Pack> {
-    const key = `${e.id}@${e.current.sha}@${e.current.digest}@${e.status}`;
+  private async packOf(e: Entry, v: PackVersion = e.current): Promise<Pack> {
+    const key = `${e.id}@${v.sha}@${v.digest}@${e.status}`;
     const hit = this.loaded.get(key);
     if (hit) return hit;
-    const { load } = await this.loadInstalled(e);
+    const { load } = await this.loadInstalled(e, v);
     const pack = toPack(load, {
-      source: { ...e.source, sha: e.current.sha },
+      source: { ...v.source, sha: v.sha },
       trust: e.trust,
       status: e.status,
-      installedAt: e.current.at,
+      installedAt: v.at,
       permissions: await permissionSurface(load, this.o.backends),
       engineVersion: this.o.engineVersion,
     });

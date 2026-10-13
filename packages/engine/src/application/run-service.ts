@@ -187,7 +187,7 @@ export class RunService {
           'invalid_transition',
           `The run is ${run.status}; a plan can only be set while it is planning or running`,
         );
-      const pack = await c.p.packs.get(run.pack.id);
+      const pack = await c.p.packs.get(run.pack.id, run.pack.sha);
       if (pack?.methodology)
         throw new DomainError(
           'invalid_option',
@@ -317,7 +317,7 @@ export class RunService {
 
       const roles = new Map((run.phases ?? []).map((p) => [p.id, p.agentRoles]));
       const target = outcome.loopTarget ?? phaseId;
-      const pack = await c.p.packs.get(run.pack.id);
+      const pack = await c.p.packs.get(run.pack.id, run.pack.sha);
       const rule = pack?.methodology?.evaluators.find(
         (r) =>
           (roles.get(phaseId) ?? []).includes(r.evaluator) &&
@@ -378,7 +378,7 @@ export class RunService {
     const { c } = this;
     const run = rec.run;
     const phase = findPhase(run, phaseId);
-    const pack = await c.p.packs.get(run.pack.id);
+    const pack = await c.p.packs.get(run.pack.id, run.pack.sha);
     const gates = pack?.methodology
       ? requiredGatesAfter(pack.methodology, phaseId, { mode: run.mode })
       : [];
