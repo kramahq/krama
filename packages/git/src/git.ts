@@ -72,11 +72,11 @@ export interface RunOptions {
 }
 
 /** What a failed call's stderr says, as a code. */
-function classify(stderr: string): GitErrorCode {
+export function classify(stderr: string): GitErrorCode {
   const s = stderr.toLowerCase();
   if (/not a git repository/.test(s)) return 'not_a_repo';
   if (
-    /authentication failed|permission denied|could not read username|terminal prompts disabled|access denied|403|publickey/.test(
+    /authentication failed|permission denied|could not read username|terminal prompts disabled|access denied|(?:error|http|status)[: ]+403|publickey/.test(
       s,
     )
   )
