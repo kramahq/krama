@@ -9,10 +9,12 @@ import {
   type EffectKind,
   type Engine,
   type Ports,
+  type ResolvedRole,
   type RosterResolution,
 } from '@kramahq/engine';
 import { z } from 'zod';
 import { ScopeError, type ToolErrorBody } from './errors.js';
+import { graphRoles, type GraphRole } from './graph.js';
 import { ensureWorker } from './workers.js';
 import type { Scope } from './tokens.js';
 
@@ -118,10 +120,20 @@ const runSummary = async (c: ToolCtx) => {
   };
 };
 
-const resolveForRun = async (c: ToolCtx, pack: Pack): Promise<RosterResolution> =>
-  resolveRoster(pack.roster, c.directory.definitions(), {
+/** The roles the relay can call: the pack's roster, or for a graph pack the orchestrator's direct agents. */
+const resolveForRun = async (
+  c: ToolCtx,
+  pack: Pack,
+): Promise<{
+  resolved: (ResolvedRole & Partial<GraphRole>)[];
+  skipped: RosterResolution['skipped'];
+}> => {
+  const roles = graphRoles(c, pack);
+  if (roles) return { resolved: roles, skipped: [] };
+  return resolveRoster(pack.roster ?? [], c.directory.definitions(), {
     backendUsable: (b) => c.directory.backendUsable(b),
   });
+};
 
 const EFFECTS = [
   'advance',
@@ -179,7 +191,24 @@ export const TOOLS = [
       }
       const pack = await packOf(c, run);
       const instances = c.ports.agents?.list({}) ?? [];
-      const roles = pack.roster
+      const graph = graphRoles(c, pack);
+      if (graph)
+        return {
+          roles: graph
+            .filter((r) => !a.role || r.role === a.role)
+            .map((r) => ({
+              role: r.role,
+              description: r.definition.description,
+              count: 1,
+              optional: false,
+              selected: { definitionId: r.definition.id, backend: r.backend },
+              candidates: [],
+              instances: instances
+                .filter((i) => i.role === r.definition.role && i.status !== 'stopped')
+                .map((i) => ({ id: i.id, status: i.status, backend: i.backend })),
+            })),
+        };
+      const roles = (pack.roster ?? [])
         .filter((r) => !a.role || r.role === a.role)
         .map((entry) => {
           let selected: { definitionId: string; backend: string } | null = null;
@@ -261,7 +290,7 @@ export const TOOLS = [
           throw new DomainError(
             'not_found',
             `No agent for role "${a.role}". Call query_agents to see the roster.`,
-            { role: a.role, roles: pack.roster.map((r) => r.role) },
+            { role: a.role, roles: (pack.roster ?? []).map((r) => r.role) },
           );
         const runtime = c.ports.agents;
         if (!runtime) throw new DomainError('not_found', 'No agent runtime is configured');
@@ -351,6 +380,28 @@ export const TOOLS = [
         ...(a.feedback ? { feedback: a.feedback } : {}),
         ...(a.findings ? { findings: a.findings } : {}),
       });
+      return runSummary(c);
+    },
+  }),
+
+  def({
+    name: 'set_plan',
+    title: 'Set the plan',
+    description:
+      'Declare the phases of this run (id, label, and the phase ids each depends on). Without a plan the run has one phase, `run`. Call it once near the start; call it again to revise phases that have not started. Phases that have started cannot be removed or re-wired. Phases whose dependencies are done start at once. Not available for a pack that declares its own phases.',
+    input: {
+      phases: z
+        .array(
+          z.object({
+            id: z.string().describe('Lowercase letters, digits and hyphens, e.g. "research"'),
+            label: z.string(),
+            dependsOn: z.array(z.string()).optional(),
+          }),
+        )
+        .min(1),
+    },
+    run: async (c, a) => {
+      await c.engine.runs.setPlan(c.scope.runId, a.phases);
       return runSummary(c);
     },
   }),

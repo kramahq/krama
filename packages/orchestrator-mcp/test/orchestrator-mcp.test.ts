@@ -102,6 +102,7 @@ describe('an MCP client drives a whole run', () => {
       'query_agents',
       'record_phase_outcome',
       'request_decision',
+      'set_plan',
       'store_artifact',
     ]);
   });

@@ -23,11 +23,15 @@ const CORE_TEMPLATE = `You are the orchestrator of a run. You plan and drive the
 4. Call \`record_phase_outcome\` with your verdict. This is how the run moves forward; nothing advances without it.
 5. Repeat until \`get_run\` reports the run completed.
 
+## Planning
+
+A run without a declared plan has one phase, \`run\`, which is the whole job. If the work has distinct stages, call \`set_plan\` once at the start with the phases (id, label, and the phases each depends on); you may call it again to revise phases that have not started, but never to rewrite ones that have. Keep the plan short: it is what people follow on the run board.
+
 ## Evaluating a phase
 
 Choose the status that is true: \`success\` (the objective is met), \`partial\` (useful but incomplete), \`failure\` (does not meet the objective), \`blocked\` (cannot proceed). Then choose what happens next with \`gating\`:
 
-- \`continue\`: accept the result and move on. A person may be asked to approve at that point; that is expected and is handled for you.
+- \`continue\`: accept the result and move on. A person may be asked to approve at that point (and, in review mode, to give a final approval when every phase is done); that is expected and is handled for you.
 - \`loop_back\`: send the work back to \`loopTarget\` (a phase id) with specific \`feedback\`. Use it when an evaluator rejects a producer's output. The platform caps automated loops; when the cap is reached the run stops for a person. Make each round count.
 - \`skip_downstream\`: later phases are pointless because of this result.
 - \`halt\`: the run cannot continue without a person. Say why in \`reason\`.
@@ -38,7 +42,7 @@ Record findings (severity, title, detail) when you loop back or halt, so people 
 
 {{QUESTION}}
 - If only a person can answer, or a choice needs human judgement, call \`request_decision\`. Every option must name its effect; you cannot offer options the platform does not implement. The run waits, and you will be told the answer.
-- When a methodology gate requires approval, the platform asks the person for you. Do not try to work around a gate.
+- When a gate or the run's final approval requires a person, the platform asks for you. Do not try to work around it.
 
 ## Artifacts and context
 
@@ -49,7 +53,7 @@ Record findings (severity, title, detail) when you loop back or halt, so people 
 
 - \`get_budget\` shows spend against the cap. \`spent\` is null when no backend reported cost; it is never estimated, so do not assume it is zero.
 - When spend nears the cap, prefer essential phases. If the cap is reached the platform pauses the run and asks a person.
-- The platform enforces run state, budget, loop caps, required gates and allowed agents. If a tool returns an error, read its \`code\` and adapt instead of retrying the same call.
+- The platform enforces run state, budget, loop caps, required approvals and allowed agents. If a tool returns an error, read its \`code\` and adapt instead of retrying the same call.
 
 ## After an interruption
 
@@ -97,18 +101,21 @@ export function renderOrchestratorPrompt({
   const m = pack.methodology;
   const t = pack.ui.terminology ?? {};
   const unit = t.run ?? 'run';
-  const phases = m.phases.map(
-    (p) =>
-      `**${p.id}** (${p.label}) — roles: ${p.roles.join(', ')}${p.dependsOn.length ? `; after: ${p.dependsOn.join(', ')}` : ''}${p.optional ? '; optional' : ''}${p.parallel ? '; may run in parallel' : ''}`,
-  );
-  const gates = m.gates.map(
-    (g) =>
-      `After **${g.afterPhase}**: ${g.label} (${g.kind}, ${g.policy.replace('_', ' ')}${g.need && g.need > 1 ? `, ${g.need} approvers` : ''})`,
-  );
-  const loops = m.evaluators.map(
-    (e) =>
-      `**${e.evaluator}** checks the work of **${e.producer}**; at most ${e.maxLoops} automated revision${e.maxLoops === 1 ? '' : 's'}${e.crossBackend ? '; prefers a different backend for independence' : ''}`,
-  );
+  const phases =
+    m?.phases.map(
+      (p) =>
+        `**${p.id}** (${p.label}) — roles: ${p.roles.join(', ')}${p.dependsOn.length ? `; after: ${p.dependsOn.join(', ')}` : ''}${p.optional ? '; optional' : ''}${p.parallel ? '; may run in parallel' : ''}`,
+    ) ?? [];
+  const gates =
+    m?.gates.map(
+      (g) =>
+        `After **${g.afterPhase}**: ${g.label} (${g.kind}, ${g.policy.replace('_', ' ')}${g.need && g.need > 1 ? `, ${g.need} approvers` : ''})`,
+    ) ?? [];
+  const loops =
+    m?.evaluators.map(
+      (e) =>
+        `**${e.evaluator}** checks the work of **${e.producer}**; at most ${e.maxLoops} automated revision${e.maxLoops === 1 ? '' : 's'}${e.crossBackend ? '; prefers a different backend for independence' : ''}`,
+    ) ?? [];
   const agents = graph
     ? graph.map(
         (a) =>
@@ -122,19 +129,23 @@ export function renderOrchestratorPrompt({
   return [
     corePrompt(mode),
     `## This ${unit.toLowerCase()}: ${run.title}`,
-    `Methodology: **${m.name}**${m.description ? ` — ${m.description}` : ''}`,
+    m ? `Methodology: **${m.name}**${m.description ? ` — ${m.description}` : ''}` : '',
     run.input.text ? `### Request\n\n${run.input.text}` : '',
     run.input.params && Object.keys(run.input.params).length
       ? `### Inputs\n\n\`\`\`json\n${JSON.stringify(run.input.params, null, 2)}\n\`\`\``
       : '',
-    `Mode: **${run.mode}**${run.mode === 'review' ? " (a person validates at the methodology's gates)" : ' (review gates are auto-approved; approval gates still need a person)'}.`,
-    `### Phases\n\n${list(phases)}`,
+    m
+      ? `Mode: **${run.mode}**${run.mode === 'review' ? " (a person validates at the methodology's gates)" : ' (review gates are auto-approved; approval gates still need a person)'}.`
+      : `Mode: **${run.mode}**${run.mode === 'review' ? ' (a person gives a final approval once every phase is done)' : ' (no final approval; any decision you request still needs a person)'}.`,
+    m
+      ? `### Phases\n\n${list(phases)}`
+      : '### Plan\n\nNo phases are declared for this run. Until you call `set_plan` it has one phase, `run`.',
     gates.length ? `### Gates\n\n${list(gates)}` : '',
     loops.length ? `### Evaluator loops\n\n${list(loops)}` : '',
     mode === 'native'
       ? `### Agents you can call\n\nOnly these specialist agents exist for this ${unit.toLowerCase()}; each is available as tools named after the agent, and no other agent can be reached.\n\n${list(agents)}`
       : `### Agents you can delegate to\n\nOnly these roles exist for this ${unit.toLowerCase()}. Call \`query_agents\` for details.\n\n${list(agents)}`,
-    m.guidance ? `## Methodology guidance\n\n${m.guidance.trim()}` : '',
+    m?.guidance ? `## Methodology guidance\n\n${m.guidance.trim()}` : '',
   ]
     .filter(Boolean)
     .join('\n\n');
