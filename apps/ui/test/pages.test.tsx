@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Phase } from '@kramahq/contract';
 import { ApiError } from '@kramahq/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiMock, events, resetApi } from './api-mock';
@@ -259,9 +260,30 @@ describe('Run detail', () => {
     expect(within(construction).getByText('not reported')).toBeTruthy(); // started, provider reported nothing
   });
 
+  it('says so when no plan has been declared and the run is one implicit phase, and not when it is planned', async () => {
+    const phase = (id: string, label: string) =>
+      ({
+        id,
+        label,
+        agentRoles: [],
+        dependsOn: [],
+        status: 'active',
+        iteration: 1,
+      }) as unknown as Phase;
+    runs().get!.mockResolvedValue(run({ phases: [phase('run', 'Run')] }));
+    renderApp('/runs/run_1');
+    expect(await screen.findByText(/No plan has been declared/)).toBeTruthy();
+  });
+
+  it('shows no such note for a run whose orchestrator declared its phases', async () => {
+    renderApp('/runs/run_1');
+    await screen.findByText('Construction');
+    expect(screen.queryByText(/No plan has been declared/)).toBeNull();
+  });
+
   it('lists only the backends the platform allows', async () => {
     renderApp('/runs/run_1');
-    expect(await screen.findByText('Allowed backends: claude')).toBeTruthy();
+    expect(await screen.findByText('Backend policy: claude')).toBeTruthy();
     expect(screen.queryByText(/copilot/)).toBeNull();
   });
 
@@ -405,6 +427,8 @@ describe('New run', () => {
         input: { text: 'Ship the retry fix' },
         title: 'Ship the retry fix',
         mode: 'autopilot',
+        // The delegation mode is always sent explicitly (UI-CUT-1): native is the default.
+        orchestrator: { delegation: 'native' },
         projectId: 'proj_oss',
         budget: { max: 25 },
       }),

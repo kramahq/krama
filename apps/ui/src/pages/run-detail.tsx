@@ -324,7 +324,17 @@ function Overview({ run }: { run: Run }) {
         <Card className="p-4">
           <div className="mb-3 text-[11px] tracking-wide text-ink3 uppercase">Phases</div>
           {run.phases?.length ? (
-            <PhaseList phases={run.phases} runStatus={run.status} />
+            <>
+              <PhaseList phases={run.phases} runStatus={run.status} />
+              {!pack.data?.methodology &&
+                run.phases.length === 1 &&
+                run.phases[0]!.id === 'run' && (
+                  <p className="m-0 mt-3 text-xs text-ink3">
+                    No plan has been declared, so the whole run is one phase. If the orchestrator
+                    plans, its phases replace this one.
+                  </p>
+                )}
+            </>
           ) : (
             <div className="text-sm text-ink3">
               The orchestrator has not planned any phases yet. They appear here as it declares them.
