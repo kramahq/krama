@@ -449,4 +449,35 @@ describe.skipIf(!hasGit)('the pack routes', { timeout: 120_000 }, () => {
       }
     });
   });
+  describe('uninstalling while a run uses the pack', () => {
+    it('is refused until the run has ended, and says why', async () => {
+      const p = packPreview.parse((await preview('admin', src())).result);
+      const installed = await call(
+        'admin',
+        'POST',
+        '/packs',
+        { previewId: p.previewId, manifestDigest: p.manifestDigest, consent },
+        { 'idempotency-key': `k-busy-${Math.random()}` },
+      );
+      expect([200, 201, 409]).toContain(installed.statusCode);
+      const person = {
+        type: 'user' as const,
+        id: 'u_admin',
+        name: 'admin',
+        role: 'admin' as const,
+      };
+      const run = await krama.engine.runs.create(
+        { packId: 'pack_notes', input: { text: 'x' } },
+        person,
+      );
+
+      const refused = await call('admin', 'DELETE', '/packs/pack_notes');
+      expect(refused.statusCode).toBe(409);
+      expect(JSON.stringify(refused.json())).toContain('1 run is still using pack_notes');
+      expect((await call('admin', 'GET', '/packs/pack_notes')).statusCode).toBe(200);
+
+      await krama.engine.runs.stop(run.id, person, 'done');
+      expect((await call('admin', 'DELETE', '/packs/pack_notes')).statusCode).toBe(204);
+    });
+  });
 });
