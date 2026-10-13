@@ -35,6 +35,7 @@ export class BudgetService {
         at,
         cost: r.cost,
         usage: r.usage ?? [],
+        ...(r.agent ? { agent: r.agent } : {}),
       });
 
       if (r.stepId) {

@@ -351,6 +351,36 @@ describe('activity, messages and cost', () => {
     expect(cost.byAgent.map((a) => a.key)).toEqual(['orchestrator']);
     expect(cost.byTool).toEqual([]);
   });
+
+  it('keeps who reported usage, so a native worker is not billed to the orchestrator (#38)', async () => {
+    const run = await newRun();
+    await krama.engine.runs.plan(run.id);
+    await krama.engine.budget.record({
+      runId: run.id,
+      cost: { amount: 1, currency: 'USD' },
+      usage: [{ unit: 'tokens', quantity: 100 }],
+      agent: { id: 'agt_rev', role: 'reviewer', backend: 'a2a-copilot' },
+    });
+    // The orchestrator's own, and an old entry with no reporter at all.
+    await krama.engine.budget.record({
+      runId: run.id,
+      cost: { amount: 2, currency: 'USD' },
+      usage: [{ unit: 'tokens', quantity: 10 }],
+    });
+    const cost = (await call('GET', `/runs/${run.id}/cost`)).json() as {
+      total: { amount: number };
+      byAgent: { key: string; cost: { amount: number } | null }[];
+      byBackend: { key: string; cost: { amount: number } | null }[];
+    };
+    expect(cost.total.amount).toBe(3);
+    const amount = (rows: { key: string; cost: { amount: number } | null }[]) =>
+      Object.fromEntries(rows.map((r) => [r.key, r.cost?.amount]));
+    expect(amount(cost.byAgent)).toEqual({ reviewer: 1, orchestrator: 2 });
+    expect(amount(cost.byBackend)).toEqual({
+      'a2a-copilot': 1,
+      [run.orchestrator.backend]: 2,
+    });
+  });
 });
 
 describe('decisions', () => {
