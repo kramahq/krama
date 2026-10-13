@@ -87,6 +87,39 @@ describe('runs', () => {
     expect(run.phases?.map((p) => p.id)).toEqual(['draft', 'review']);
   });
 
+  it('rejects missing pack parameters with a field-level 422, for API callers too (#40)', async () => {
+    const real = krama.ports.packs.get.bind(krama.ports.packs);
+    const spy = vi.spyOn(krama.ports.packs, 'get').mockImplementation(async (id) => {
+      const pack = await real(id);
+      return (
+        pack && {
+          ...pack,
+          inputsSchema: {
+            type: 'object',
+            required: ['audience'],
+            properties: { audience: { type: 'string' } },
+          },
+        }
+      );
+    });
+    try {
+      const res = await call('POST', '/runs', {
+        body: { packId: DEMO_PACK.id, input: { text: 'no audience' } },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json()).toMatchObject({
+        code: 'validation_failed',
+        errors: [{ field: 'input.params.audience' }],
+      });
+      const ok = await call('POST', '/runs', {
+        body: { packId: DEMO_PACK.id, input: { text: 'x', params: { audience: 'devs' } } },
+      });
+      expect(ok.statusCode).toBe(201);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('answers a repeated Idempotency-Key with the same run', async () => {
     const send = () =>
       call('POST', '/runs', {
