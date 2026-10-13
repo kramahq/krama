@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { API_BASE_PATH, jsonSchema, page } from './schemas/common.js';
+import { auditRecord, auditVerifyResult } from './schemas/audit.js';
 import { backendCheckResult, backendDescriptor } from './schemas/backends.js';
 import {
   activityItem,
@@ -776,6 +777,52 @@ const asyncOp: Opts = { status: 202, response: operation };
   d('GET', '/allowed-backends', 'listAllowedBackends', 'Backends the platform may use', 'admin', {
     response: z.object({ items: z.array(z.object({ wrapper: z.string(), allowed: z.boolean() })) }),
   });
+}
+
+// ---- Transcript (M5.5) -------------------------------------------------------
+{
+  const d = def('Transcript');
+  /** Unclipped, so it holds everything the agents saw and did: `operator` and above (ADR-0014). */
+  d(
+    'GET',
+    '/runs/{id}/transcript',
+    'listTranscript',
+    'Everything said and done in a run, lossless, oldest first',
+    'operator',
+    {
+      query: z.object({
+        after: str,
+        limit: z.coerce.number().int().min(1).max(1000).optional(),
+        kind: str,
+        agent: str,
+        phase: str,
+      }),
+      response: z.object({
+        items: z.array(auditRecord),
+        /** Pass as `after` for the next page; absent on the last page. */
+        nextCursor: z.string().optional(),
+        /** The chain's last position and hash now, to compare against an export or a seal. */
+        head: z.object({ seq: z.number().int(), hash: z.string() }).optional(),
+      }),
+      ...later(),
+    },
+  );
+  d(
+    'GET',
+    '/runs/{id}/transcript/blobs/{sha256}',
+    'getTranscriptBlob',
+    'A body too large to keep inline, by its content hash',
+    'operator',
+    { ...later() },
+  );
+  d(
+    'GET',
+    '/runs/{id}/transcript/verify',
+    'verifyTranscript',
+    'Recompute the run chain and its blob hashes and report the first break',
+    'operator',
+    { response: auditVerifyResult, ...later() },
+  );
 }
 
 /** Every route the platform exposes under `/api/v1`. */

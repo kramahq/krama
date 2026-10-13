@@ -1,10 +1,13 @@
 import type { ServerResponse } from 'node:http';
 import type { EventEnvelope } from '@kramahq/contract';
 import { CursorGoneError } from '@kramahq/engine';
+import type { AuditRecord } from '@kramahq/contract';
+import { satisfies } from './auth.js';
 import type { ApiRequest, Handlers, StreamContext, StreamHandlers } from './context.js';
 import { STREAMED } from './context.js';
 import { ApiProblem, notFound } from './problems.js';
 import type { TicketStore } from './tickets.js';
+import { ledgerOf, transcriptChain } from './transcript.js';
 
 /** Events held back for one reader while it catches up, and the page size of a replay. */
 const PAGE = 500;
@@ -17,7 +20,8 @@ const MAX_STREAMS = 100;
 
 /** The topics the event log understands (`EventReadOptions.topics`). */
 const TOPIC =
-  /^(runs|inbox|agents|memory|schedules|packs|audit|operations|(run|agent|operations):[A-Za-z0-9_-]+)$/;
+  /^(runs|inbox|agents|memory|schedules|packs|audit|operations|(run|agent|operations):[A-Za-z0-9_-]+|run:[A-Za-z0-9_-]+:transcript)$/;
+const TRANSCRIPT_TOPIC = /^run:([A-Za-z0-9_-]+):transcript$/;
 const CURSOR = /^\d+$/;
 
 export function parseTopics(raw: string | undefined): string[] {
@@ -34,7 +38,15 @@ export function parseTopics(raw: string | undefined): string[] {
     throw new ApiProblem('validation_failed', 'Unknown topic', {
       errors: bad.map((t) => ({ field: 'topics', message: `Unknown topic "${t}"` })),
     });
-  return [...new Set(topics)];
+  const unique = [...new Set(topics)];
+  // A transcript is read from the audit ledger and its cursor is a chain position, not an event id: it is served alone.
+  if (unique.some((t) => TRANSCRIPT_TOPIC.test(t)) && unique.length > 1)
+    throw new ApiProblem('validation_failed', 'A transcript topic is served on its own', {
+      errors: [
+        { field: 'topics', message: 'Do not combine run:<id>:transcript with other topics' },
+      ],
+    });
+  return unique;
 }
 
 function parseCursor(raw: string | undefined, field: string): string | undefined {
@@ -51,6 +63,23 @@ const goneProblem = () =>
     'gone',
     'The cursor is older than the events the server still keeps. Fetch a fresh snapshot, then resume from the latest cursor.',
   );
+
+/** Where a stream reads its backlog and follows live records from: the event log, or one run's transcript. */
+interface Feed {
+  read(after: string | undefined, limit: number): Promise<EventEnvelope[]>;
+  subscribe(listener: (e: EventEnvelope) => void): () => void;
+}
+
+/** A transcript record as a stream event: its id is its position in the chain, so `Last-Event-ID` resumes exactly. */
+const transcriptEvent = (runId: string, r: AuditRecord): EventEnvelope => ({
+  id: String(r.seq),
+  type: 'transcript.record',
+  at: r.at,
+  schema: 1,
+  runId: runId as EventEnvelope['runId'],
+  subject: { type: 'run', id: runId },
+  data: r,
+});
 
 export interface EventStreamOptions {
   tickets: TicketStore;
@@ -77,9 +106,39 @@ export function eventStreams(o: EventStreamOptions): EventStreams {
   const maxStreams = o.maxStreams ?? MAX_STREAMS;
   const open = new Set<() => void>();
 
+  /** The feed for these topics, after checking who may read it: a transcript is unclipped, so it needs `operator`. */
+  async function feedFor(req: ApiRequest, topics: string[]): Promise<Feed> {
+    const { ports } = req.ctx.krama;
+    const m = topics.length === 1 ? TRANSCRIPT_TOPIC.exec(topics[0]!) : null;
+    if (!m) {
+      return {
+        read: (after, limit) => ports.events.read({ ...(after ? { after } : {}), topics, limit }),
+        subscribe: (l) => ports.events.subscribe(l, topics),
+      };
+    }
+    const runId = m[1]!;
+    if (!satisfies(req.principal, 'operator'))
+      throw new ApiProblem('forbidden', 'Reading a transcript needs the operator role');
+    if (!(await ports.store.runs.get(runId))) throw notFound('Run', runId);
+    const { ledger } = ledgerOf(ports);
+    const chain = transcriptChain(runId);
+    return {
+      read: async (after, limit) => {
+        const from = after ? Number(after) : 0;
+        // A position past the end of the chain is not one this server ever issued: start from a fresh snapshot.
+        if (from > 0 && from > ((await ledger.head(chain))?.seq ?? 0))
+          throw new CursorGoneError(after!);
+        return (await ledger.read(chain, { afterSeq: from, limit })).map((r) =>
+          transcriptEvent(runId, r),
+        );
+      },
+      subscribe: (l) => ledger.subscribe((r) => l(transcriptEvent(runId, r)), [chain]),
+    };
+  }
+
   async function serve(req: ApiRequest, s: StreamContext, topics: string[]): Promise<unknown> {
     const q = req.query as { cursor?: string; after?: string; limit?: number };
-    const events = req.ctx.krama.ports.events;
+    const feed = await feedFor(req, topics);
     const accept = String(req.headers['accept'] ?? '');
 
     // A page of events.
@@ -94,7 +153,7 @@ export function eventStreams(o: EventStreamOptions): EventStreams {
       );
       let items: EventEnvelope[];
       try {
-        items = await events.read({ ...(after ? { after } : {}), topics, limit });
+        items = await feed.read(after, limit);
       } catch (e) {
         if (e instanceof CursorGoneError) throw goneProblem();
         throw e;
@@ -123,7 +182,7 @@ export function eventStreams(o: EventStreamOptions): EventStreams {
       const ok = conn.res!.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
       if (!ok && conn.res!.writableLength > MAX_UNWRITTEN_BYTES) close();
     };
-    const unsubscribe = events.subscribe((e) => (live ? write(e) : held.push(e)), topics);
+    const unsubscribe = feed.subscribe((e) => (live ? write(e) : held.push(e)));
     let beat: NodeJS.Timeout | undefined;
     let closed = false;
     function close(): void {
@@ -142,7 +201,7 @@ export function eventStreams(o: EventStreamOptions): EventStreams {
 
     let first: EventEnvelope[] = [];
     try {
-      if (lastId) first = await events.read({ after: lastId, topics, limit: PAGE });
+      if (lastId) first = await feed.read(lastId, PAGE);
     } catch (e) {
       unsubscribe();
       if (e instanceof CursorGoneError) throw goneProblem();
@@ -167,7 +226,7 @@ export function eventStreams(o: EventStreamOptions): EventStreams {
       for (;;) {
         for (const e of page) write(e);
         if (page.length < PAGE || closed) break;
-        page = await events.read({ after: String(lastSeq), topics, limit: PAGE });
+        page = await feed.read(String(lastSeq), PAGE);
       }
     } catch {
       // The log failed under us: end the stream; the client reconnects and tries again from its last id.

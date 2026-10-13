@@ -1478,6 +1478,42 @@ export const OPERATIONS = {
     ifMatch: false,
     cut1: true,
   },
+  listTranscript: {
+    method: 'GET',
+    path: '/runs/{id}/transcript',
+    tag: 'Transcript',
+    perm: 'operator',
+    kind: 'json',
+    status: 200,
+    params: ['id'],
+    idempotent: false,
+    ifMatch: false,
+    cut1: false,
+  },
+  getTranscriptBlob: {
+    method: 'GET',
+    path: '/runs/{id}/transcript/blobs/{sha256}',
+    tag: 'Transcript',
+    perm: 'operator',
+    kind: 'raw',
+    status: 200,
+    params: ['id', 'sha256'],
+    idempotent: false,
+    ifMatch: false,
+    cut1: false,
+  },
+  verifyTranscript: {
+    method: 'GET',
+    path: '/runs/{id}/transcript/verify',
+    tag: 'Transcript',
+    perm: 'operator',
+    kind: 'json',
+    status: 200,
+    params: ['id'],
+    idempotent: false,
+    ifMatch: false,
+    cut1: false,
+  },
 } as const;
 
 /** The request and response shapes of every operation. */
@@ -6943,5 +6979,71 @@ export interface OperationTypes {
     query: undefined;
     body: undefined;
     response: { items: { wrapper: string; allowed: boolean }[] };
+  };
+  /** GET /runs/{id}/transcript: Everything said and done in a run, lossless, oldest first */
+  listTranscript: {
+    params: { id: string };
+    query: { after?: string; limit?: number; kind?: string; agent?: string; phase?: string };
+    body: undefined;
+    response: {
+      items: {
+        id: string;
+        chain: string;
+        seq: number;
+        at: string;
+        actor: {
+          type: 'user' | 'orchestrator' | 'agent' | 'system';
+          id: string;
+          instanceId?: string;
+          role?: string;
+        };
+        kind: string;
+        runId?: string;
+        phaseId?: string;
+        stepId?: string;
+        decisionId?: string;
+        correlation?: { [key: string]: string };
+        source: 'a2a-stream' | 'http-sink' | 'gateway-tap' | 'mcp' | 'api' | 'system';
+        sourceEventId?: string;
+        payload?: unknown;
+        blob?: { sha256: string; bytes: number; mediaType: string };
+        redaction?: { applied: boolean; rules: string[] };
+        prev: string;
+        hash: string;
+      }[];
+      nextCursor?: string;
+      head?: { seq: number; hash: string };
+    };
+  };
+  /** GET /runs/{id}/transcript/blobs/{sha256}: A body too large to keep inline, by its content hash */
+  getTranscriptBlob: {
+    params: { id: string; sha256: string };
+    query: undefined;
+    body: undefined;
+    response: Response;
+  };
+  /** GET /runs/{id}/transcript/verify: Recompute the run chain and its blob hashes and report the first break */
+  verifyTranscript: {
+    params: { id: string };
+    query: undefined;
+    body: undefined;
+    response: {
+      ok: boolean;
+      chain: string;
+      count: number;
+      head?: { seq: number; hash: string };
+      firstBreak?: {
+        seq: number;
+        reason:
+          | 'hash_mismatch'
+          | 'prev_mismatch'
+          | 'seq_gap'
+          | 'chain_mismatch'
+          | 'head_mismatch'
+          | 'blob_missing'
+          | 'blob_mismatch';
+        detail?: string;
+      };
+    };
   };
 }
