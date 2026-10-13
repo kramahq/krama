@@ -60,6 +60,9 @@ export class WorkspaceManager {
   /** Removes everything for a run (all workspaces). */
   removeRun(key: string): void {
     const dir = resolve(join(this.base, 'runs', this.name(key, 'workspace key')));
-    if (dir.startsWith(this.base + sep)) rmSync(dir, { recursive: true, force: true });
+    // On Windows a child that has just stopped keeps its working directory for a moment, so removing it can fail with
+    // EBUSY or EPERM until the system lets go; retry before reporting it.
+    if (dir.startsWith(this.base + sep))
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
