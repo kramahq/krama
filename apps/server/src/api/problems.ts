@@ -80,7 +80,11 @@ export function toProblem(err: unknown, traceId: string): ApiProblem {
   if (err instanceof ApiProblem) return err;
   if (err instanceof z.ZodError) return validationProblem('body', err);
   // A rule of the platform, raised by the engine: it already names the contract code it maps to.
-  if (err instanceof DomainError) return new ApiProblem(err.problemCode, err.message, { traceId });
+  if (err instanceof DomainError)
+    return new ApiProblem(err.problemCode, err.message, {
+      traceId,
+      ...(fieldErrors(err.details?.errors) ? { errors: fieldErrors(err.details?.errors)! } : {}),
+    });
   if (err instanceof VersionConflictError)
     return new ApiProblem(
       'precondition_failed',
@@ -97,4 +101,13 @@ export function toProblem(err: unknown, traceId: string): ApiProblem {
     });
   }
   return new ApiProblem('internal', undefined, { traceId });
+}
+
+/** Field-level errors a domain rule attached to its details, if they have the contract's shape. */
+function fieldErrors(v: unknown): { field: string; message: string }[] | undefined {
+  if (!Array.isArray(v) || v.length === 0) return undefined;
+  const ok = v.every(
+    (e) => e && typeof e.field === 'string' && typeof e.message === 'string',
+  ) as boolean;
+  return ok ? (v as { field: string; message: string }[]) : undefined;
 }

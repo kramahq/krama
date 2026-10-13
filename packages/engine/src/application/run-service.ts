@@ -2,6 +2,7 @@ import type { ActorRef, CreateRun, PhaseOutcome, Run } from '@kramahq/contract';
 import { DomainError } from '../domain/errors.js';
 import type { DomainEvent } from '../domain/events.js';
 import { evaluate } from '../domain/evaluator-loop.js';
+import { checkPackInputs } from '../domain/pack-inputs.js';
 import { assertBackendAllowed, requiredGatesAfter } from '../domain/invariants.js';
 import { transitionPhase } from '../domain/phase-machine.js';
 import { transitionRun, type RunTrigger } from '../domain/run-machine.js';
@@ -51,6 +52,12 @@ export class RunService {
     const pack = await c.p.packs.get(cmd.packId);
     if (!pack)
       throw new DomainError('not_found', `Pack ${cmd.packId} not found`, { packId: cmd.packId });
+    // What the pack declares it needs is checked here, so every caller gets the same answer as the New Run form.
+    const inputs = checkPackInputs(pack.inputsSchema, cmd.input.params);
+    if (!inputs.ok)
+      throw new DomainError('input_required', 'The input does not match what this pack asks for', {
+        errors: inputs.errors,
+      });
     const orch = {
       ...(c.policy.defaultOrchestrator ?? {
         definitionId: 'orchestrator/default',
