@@ -359,22 +359,7 @@ export class Sources {
       return { entry: locked, dir: join(dir, src.path), changed: false, moved: [] };
     }
 
-    const { moved } = await this.fetch(src.url);
-    const found = await this.lookup(this.mirrorDir(src.url), src.ref);
-    if (!found) {
-      const detail = `${normalizeRemote(src.url)} has no tag, branch or commit "${src.ref}"`;
-      this.emit({ type: 'source.refused', url: redactUrls(src.url), reason: 'not_found', detail });
-      throw new GitError('not_found', detail);
-    }
-    // A tag that moved on the remote is not followed. The pin stays on what the tag first named.
-    const movedHere = moved.find((m) => m.tag === src.ref);
-    if (movedHere) {
-      const detail = `The tag ${src.ref} on ${normalizeRemote(src.url)} now points at ${movedHere.now.slice(0, 12)}, not ${movedHere.was.slice(0, 12)} where it first did. A published tag does not move; this is refused.`;
-      this.emit({ type: 'source.refused', url: redactUrls(src.url), reason: 'moved_tag', detail });
-      throw new GitError('refused', detail);
-    }
-    if (this.opts.requireSigned) await this.verifySigned(src.url, found, src.ref);
-
+    const { found, moved } = await this.locate(src);
     const entry: LockEntry = {
       url: src.url,
       ref: src.ref,
@@ -391,6 +376,96 @@ export class Sources {
     await this.writeLock(all);
     this.emit({ type: 'source.pinned', entry: all[key]!, changed });
     return { entry: all[key]!, dir: join(dir, src.path), changed, moved };
+  }
+
+  /**
+   * Looks at the remote and says which commit `ref` names now: fetches the mirror, refuses a tag that has moved, and checks
+   * the signature when signed sources are required. It pins nothing.
+   */
+  private async locate(
+    src: SourceRef,
+  ): Promise<{ found: { sha: string; kind: RefKind }; moved: MovedTag[] }> {
+    const { moved } = await this.fetch(src.url);
+    const found = await this.lookup(this.mirrorDir(src.url), src.ref);
+    if (!found) {
+      const detail = `${normalizeRemote(src.url)} has no tag, branch or commit "${src.ref}"`;
+      this.emit({ type: 'source.refused', url: redactUrls(src.url), reason: 'not_found', detail });
+      throw new GitError('not_found', detail);
+    }
+    // A tag that moved on the remote is not followed. The pin stays on what the tag first named.
+    const movedHere = moved.find((m) => m.tag === src.ref);
+    if (movedHere) {
+      const detail = `The tag ${src.ref} on ${normalizeRemote(src.url)} now points at ${movedHere.now.slice(0, 12)}, not ${movedHere.was.slice(0, 12)} where it first did. A published tag does not move; this is refused.`;
+      this.emit({ type: 'source.refused', url: redactUrls(src.url), reason: 'moved_tag', detail });
+      throw new GitError('refused', detail);
+    }
+    if (this.opts.requireSigned) await this.verifySigned(src.url, found, src.ref);
+    return { found, moved };
+  }
+
+  /** Looks at a source without pinning it: the commit it names now, and a work tree of that commit. For previews. */
+  async peek(
+    src: SourceRef,
+  ): Promise<{ sha: string; refKind: RefKind; dir: string; moved: MovedTag[] }> {
+    this.allow(src.url);
+    const { found, moved } = await this.locate(src);
+    const dir = await this.ensureWorktree(src.url, found.sha);
+    return { sha: found.sha, refKind: found.kind, dir: join(dir, src.path), moved };
+  }
+
+  /**
+   * The work tree of an exact commit of a source, whatever its ref is now: for loading what is installed. The commit is
+   * fetched only if the mirror does not have it.
+   */
+  async at(src: { url: string; path: string }, sha: string): Promise<string> {
+    this.allow(src.url);
+    const mirror = this.mirrorDir(src.url);
+    const have = await stat(join(mirror, 'HEAD')).then(
+      () => true,
+      () => false,
+    );
+    if (!have || !(await this.git.ok(['cat-file', '-e', `${sha}^{commit}`], { cwd: mirror })))
+      await this.fetch(src.url);
+    return join(await this.ensureWorktree(src.url, sha), src.path);
+  }
+
+  /** Every pin as it is now, to put back with `replaceLock` if what was pinned turns out not to be wanted. */
+  snapshot(): Promise<Record<string, LockEntry>> {
+    return this.lockfile();
+  }
+
+  /** Puts the whole lock file back to a snapshot, dropping pins made since. */
+  async replaceLock(snapshot: Record<string, LockEntry>): Promise<void> {
+    await this.writeLock(snapshot);
+  }
+
+  /** The pins held for these sources, for keeping a snapshot to come back to. Sources that are not pinned are left out. */
+  async pinned(srcs: readonly SourceRef[]): Promise<LockEntry[]> {
+    const lock = await this.lockfile();
+    return srcs.flatMap((s) => (lock[sourceKey(s)] ? [lock[sourceKey(s)]!] : []));
+  }
+
+  /**
+   * Puts pins back exactly as they were (a rollback): each commit is made available again, from the mirror or, if the mirror
+   * lacks it, from the remote, and the lock file takes the entries. Nothing is looked up by ref, so a ref that has moved
+   * since does not matter.
+   */
+  async restore(entries: readonly LockEntry[]): Promise<void> {
+    for (const e of entries) {
+      this.allow(e.url);
+      const mirror = this.mirrorDir(e.url);
+      const have = await stat(join(mirror, 'HEAD')).then(
+        () => true,
+        () => false,
+      );
+      if (!have || !(await this.git.ok(['cat-file', '-e', `${e.sha}^{commit}`], { cwd: mirror })))
+        await this.fetch(e.url);
+      await this.ensureWorktree(e.url, e.sha);
+    }
+    const all = await this.lockfile();
+    for (const e of entries) all[sourceKey(e)] = e;
+    await this.writeLock(all);
+    for (const e of entries) this.emit({ type: 'source.pinned', entry: e, changed: true });
   }
 
   /** What an update would change, without moving the pin: the pinned commit, the commit the ref names now, and the files between. */

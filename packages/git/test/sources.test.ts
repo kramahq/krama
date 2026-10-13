@@ -164,6 +164,35 @@ describe.skipIf(!hasGit)('installed sources', () => {
     expect(pinned.dir).not.toBe(updated.dir);
   });
 
+  it('looks at a source without pinning it, and puts pins back exactly as they were', async () => {
+    const r = await remote({ 'a/config.json': '{"v":1}' });
+    const sources = await open();
+    const src = { url: r.url, ref: 'main', path: 'a' };
+
+    const seen = await sources.peek(src);
+    expect(seen.refKind).toBe('branch');
+    expect(readFileSync(join(seen.dir, 'config.json'), 'utf8')).toBe('{"v":1}');
+    expect(await sources.lockfile()).toEqual({});
+
+    const first = await sources.resolve(src);
+    const snapshot = await sources.pinned([src, { url: r.url, ref: 'never-pinned', path: '' }]);
+    expect(snapshot).toEqual([first.entry]);
+
+    const sha2 = await r.commit({ 'a/config.json': '{"v":2}' }, 'second');
+    await r.push();
+    expect((await sources.peek(src)).sha).toBe(sha2);
+    expect((await sources.resolve(src)).entry.sha).toBe(first.entry.sha);
+    await sources.resolve(src, { update: true });
+    expect(Object.values(await sources.lockfile())[0]!.sha).toBe(sha2);
+
+    // Roll back: the branch has moved on, and the pin goes back to where it was anyway.
+    await sources.restore(snapshot);
+    expect(Object.values(await sources.lockfile())[0]!.sha).toBe(first.entry.sha);
+    const back = await sources.resolve(src);
+    expect(back.changed).toBe(false);
+    expect(readFileSync(join(back.dir, 'config.json'), 'utf8')).toBe('{"v":1}');
+  });
+
   it('refuses a tag the remote has moved, keeps the old pin, reports it, and still serves other refs', async () => {
     const r = await remote({ 'a/config.json': '{"v":1}' });
     const sha1 = await git.text(['rev-parse', 'HEAD'], { cwd: r.work });
