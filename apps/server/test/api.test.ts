@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { A2A_VERSIONS } from '@kramahq/agents';
 import {
   API_BASE_PATH,
   ROUTES,
@@ -91,6 +92,9 @@ describe('platform routes', () => {
     expect(res.statusCode).toBe(200);
     const body = capabilities.parse(res.json());
     expect(body.features.auth.mode).toBe('token');
+    // The gateway speaks A2A 1.0 and falls back to 0.3; clients must not read stale metadata (#41).
+    expect(body.a2a.versions).toEqual([...A2A_VERSIONS]);
+    expect(body.a2a.versions[0]).toBe('1.0');
     // Only what exists is advertised.
     expect(body.features.memory.enabled).toBe(false);
     expect(body.features.schedules.enabled).toBe(false);
