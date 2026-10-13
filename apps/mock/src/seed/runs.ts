@@ -241,7 +241,7 @@ const packById = (key: string) => packs.find((p) => p.id === `pack_${key}`)!;
 
 export const runs: Run[] = specs.map((s): Run => {
   const pack = packById(s.pack);
-  const phases: Phase[] = pack.methodology.phases.map((t, i) => {
+  const phases: Phase[] = (pack.methodology?.phases ?? []).map((t, i) => {
     const st = s.ph[i] ?? 'pend';
     const cost = s.phaseCosts?.[i];
     return {
