@@ -69,6 +69,25 @@ describe('authentication and transport', () => {
       env: { KRAMA_MCP_TOKEN: t },
     });
   });
+
+  it('shapes the governance entry for the backend that reads it', () => {
+    const entry = (backend?: string) =>
+      mcpEntryFor('http://127.0.0.1:4100', 'krm_x', undefined, backend).mcp.krama;
+    // OpenCode calls an HTTP MCP server "remote" (#42).
+    expect(entry('a2a-opencode')).toMatchObject({
+      type: 'remote',
+      url: 'http://127.0.0.1:4100/mcp',
+    });
+    // Headless Codex fails every MCP call that is not pre-approved, so Krama's own tools are (#43).
+    expect(entry('a2a-codex')).toMatchObject({ type: 'http', defaultToolsApprovalMode: 'approve' });
+    // Nobody else gets an approval setting they did not ask for.
+    for (const b of [undefined, 'a2a-claude', 'a2a-copilot', 'a2a-antigravity'])
+      expect(entry(b)).toEqual({
+        type: 'http',
+        url: 'http://127.0.0.1:4100/mcp',
+        headers: { Authorization: 'Bearer ${KRAMA_MCP_TOKEN}' },
+      });
+  });
 });
 
 describe('an MCP client drives a whole run', () => {

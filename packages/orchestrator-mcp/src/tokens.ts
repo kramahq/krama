@@ -65,20 +65,28 @@ export class TokenRegistry {
   }
 }
 
-/** The `mcp` entry and environment to give an orchestrator agent so it can call back into Krama. */
+/**
+ * The `mcp` entry and environment to give an orchestrator agent so it can call back into Krama. Wrappers do not share one
+ * MCP server shape (WRAPPER-CONFIG §6), so the entry follows the backend that will read it:
+ *
+ * - `a2a-opencode` names an HTTP server `remote`, not `http`.
+ * - `a2a-codex` runs headless with `approvalPolicy: "never"`, which fails every MCP call that is not pre-approved, so
+ *   Krama's own governance tools carry `defaultToolsApprovalMode: "approve"`. This is a routine, scoped call back to the
+ *   platform and not a person's approval; the field is read by a2a-codex 1.7.3 and later, and ignored before that.
+ */
 export function mcpEntryFor(
   baseUrl: string,
   token: string,
   envVar = 'KRAMA_MCP_TOKEN',
+  backend?: string,
 ): { mcp: Record<string, unknown>; env: Record<string, string> } {
-  return {
-    mcp: {
-      krama: {
-        type: 'http',
-        url: `${baseUrl.replace(/\/$/, '')}/mcp`,
-        headers: { Authorization: `Bearer \${${envVar}}` },
-      },
-    },
-    env: { [envVar]: token },
-  };
+  const url = `${baseUrl.replace(/\/$/, '')}/mcp`;
+  const headers = { Authorization: `Bearer \${${envVar}}` };
+  const server =
+    backend === 'a2a-opencode'
+      ? { type: 'remote', url, headers }
+      : backend === 'a2a-codex'
+        ? { type: 'http', url, headers, defaultToolsApprovalMode: 'approve' }
+        : { type: 'http', url, headers };
+  return { mcp: { krama: server }, env: { [envVar]: token } };
 }

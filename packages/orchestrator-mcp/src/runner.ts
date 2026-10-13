@@ -458,12 +458,13 @@ export class OrchestratorRunner implements RunExecutor {
       }
       const children = childrenOf(env, plan, graph, graph.orchestrator, agents);
       mcp.tokens.revokeRun(run.id);
-      const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
       spec = await specFor(env, run, pack, plan, graph.orchestrator, children, {
         prompt: renderOrchestratorPrompt({ run, pack, roster, agents: children.lines }),
         hints: false, // the orchestrator's prompt already lists the agents it can call
-        mcp: entry.mcp,
-        env: entry.env,
+        governance: {
+          baseUrl: this.o.mcpBaseUrl,
+          token: mcp.tokens.issue(run.id, undefined, mode),
+        },
       });
     } else {
       const base = orchestrator!;
@@ -476,7 +477,12 @@ export class OrchestratorRunner implements RunExecutor {
         },
       };
       mcp.tokens.revokeRun(run.id);
-      const entry = mcpEntryFor(this.o.mcpBaseUrl, mcp.tokens.issue(run.id, undefined, mode));
+      const entry = mcpEntryFor(
+        this.o.mcpBaseUrl,
+        mcp.tokens.issue(run.id, undefined, mode),
+        undefined,
+        definition.backend.wrapper,
+      );
       const persona = directory.systemPrompt(definition.id);
       spec = {
         definition,
