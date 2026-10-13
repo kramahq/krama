@@ -4,9 +4,11 @@ import {
   A2AGateway,
   BackendRegistry,
   ProcessAgentRuntime,
+  validateOptions,
   type RuntimeOptions,
 } from '@kramahq/agents';
-import type { AgentDefinition, Pack } from '@kramahq/contract';
+import { Git, Sources, type SourceEvent } from '@kramahq/git';
+import type { ActorRef, AgentDefinition, Pack } from '@kramahq/contract';
 import {
   AuditWriter,
   EnvSecretResolver,
@@ -18,7 +20,6 @@ import {
   createEngine,
   createGatewayTap,
   type Engine,
-  type PackRepository,
   type Policy,
   type Ports,
   type SecretResolver,
@@ -34,6 +35,7 @@ import {
   type SubAgentsOptions,
 } from '@kramahq/orchestrator-mcp';
 import { PgStore, openPglite, type OpenedStore } from '@kramahq/store';
+import { PackManager } from './packs/index.js';
 
 /** An agent definition together with its persona text (the contents of its `prompt.md`). */
 export interface DefinitionBundle {
@@ -60,6 +62,16 @@ export interface KramaOptions {
    * on PGlite, which runs one query at a time, and not on Postgres).
    */
   auditStorage?: 'same' | 'separate';
+  /** Git sources: which remotes may be used, which are trusted, and whether they must be signed. */
+  sources?: {
+    allow?: string[];
+    trusted?: string[];
+    requireSigned?: boolean;
+    /** The git runner; tests isolate it from the machine's own configuration. */
+    git?: Git;
+  };
+  /** This Krama's version, for each pack's `engine` range. */
+  engineVersion?: string;
   onError?: (e: unknown, where: string) => void;
 }
 
@@ -73,6 +85,10 @@ export interface Krama {
   collector: AgentEventCollector;
   runner: OrchestratorRunner;
   runtime: ProcessAgentRuntime;
+  /** The packs on this machine: those shipped with this build and those installed from git. */
+  packs: PackManager;
+  /** Other people's repositories: mirrors, pinned work trees and the lock file. */
+  sources: Sources;
   backends: BackendRegistry;
   /** The agent definitions this server was started with (from its packs and local files). */
   definitions: readonly DefinitionBundle[];
@@ -80,16 +96,6 @@ export interface Krama {
   workspaceRoot: string;
   /** Stops agents, the MCP endpoint and the database. Safe to call twice. */
   close(): Promise<void>;
-}
-
-class StaticPacks implements PackRepository {
-  constructor(private readonly packs: Pack[]) {}
-  async get(id: string) {
-    return this.packs.find((p) => p.id === id);
-  }
-  async list() {
-    return [...this.packs];
-  }
 }
 
 /**
@@ -132,6 +138,54 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     dataDir: join(o.home, 'agents-data'),
     ...(o.resolveCommand ? { resolveCommand: o.resolveCommand } : {}),
   });
+  const control = async (
+    kind: string,
+    actor: ActorRef,
+    subject: { type: string; id: string },
+    detail: Record<string, unknown>,
+  ): Promise<void> => {
+    await ledger.append({
+      chain: 'control',
+      actor: {
+        type: actor.type === 'schedule' ? 'system' : actor.type,
+        id: actor.id,
+        ...(actor.role ? { role: actor.role } : {}),
+      },
+      kind,
+      source: actor.type === 'system' ? 'system' : 'api',
+      sourceEventId: ids.next('aud'),
+      payload: { subject, ...(actor.name ? { actorName: actor.name } : {}), detail },
+    });
+  };
+  const sources = await Sources.open({
+    root: join(o.home, 'sources'),
+    ...(o.sources?.git ? { git: o.sources.git } : {}),
+    ...(o.sources?.allow ? { allow: o.sources.allow } : {}),
+    ...(o.sources?.requireSigned ? { requireSigned: true } : {}),
+    // What the platform does with other people's repositories is part of the record, whoever asked.
+    onEvent: (e: SourceEvent) => {
+      if (e.type === 'source.fetched') return;
+      void control(
+        e.type,
+        { type: 'system', id: 'engine' },
+        { type: 'source', id: 'url' in e ? e.url : e.entry.url },
+        { ...e },
+      ).catch((err: unknown) => o.onError?.(err, 'sources'));
+    },
+  });
+  const packManager = await PackManager.open({
+    dir: join(o.home, 'packs'),
+    sources,
+    backends,
+    secrets,
+    checkProviderConfig: (d, section) =>
+      validateOptions(d, section).map((i) => ({ path: i.path, message: i.message })),
+    allowedBackends: o.policy?.allowedBackends,
+    trusted: o.sources?.trusted,
+    engineVersion: o.engineVersion ?? '0.0.0',
+    builtin: o.packs,
+    audit: control,
+  });
   const ports: Ports = {
     // With the audit record in its own database a store transaction cannot include it: those writes follow the change instead.
     store: auditDb ? new PgStore(db.db) : db.store,
@@ -142,7 +196,7 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
       ids,
       clock,
     }),
-    packs: new StaticPacks(o.packs),
+    packs: packManager,
     clock,
     ids,
     notifier: new NullNotifier(),
@@ -202,6 +256,8 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     collector,
     runner,
     runtime,
+    packs: packManager,
+    sources,
     backends,
     definitions: o.definitions,
     workspaceRoot: join(o.home, 'agents-data', 'workspaces'),
