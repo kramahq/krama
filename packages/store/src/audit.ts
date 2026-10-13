@@ -32,7 +32,9 @@ const PAGE = 500;
 export class PgAuditLedger implements AuditLedger {
   private readonly ids: IdGenerator;
   private readonly now: () => Date;
-  private readonly listeners = new Set<{ fn: (r: AuditRecord) => void; chains?: string[] }>();
+  private listeners = new Set<{ fn: (r: AuditRecord) => void; chains?: string[] }>();
+  /** Set on a ledger bound to a store transaction: what to tell subscribers once, and only if, it commits. */
+  private deferred: (() => void)[] | undefined;
 
   constructor(
     private readonly db: Db,
@@ -40,6 +42,23 @@ export class PgAuditLedger implements AuditLedger {
   ) {
     this.ids = o.ids ?? new UlidIdGenerator();
     this.now = o.now ?? (() => new Date());
+  }
+
+  /**
+   * The same ledger on a store transaction: its appends commit or roll back with that transaction (a nested write is a
+   * savepoint), and subscribers are told when the outermost transaction commits, never before and never after a rollback.
+   * `pending` collects the notifications; the transaction's owner runs them after the commit.
+   */
+  bind(db: Db, pending: (() => void)[]): PgAuditLedger {
+    const bound = new PgAuditLedger(db, { ids: this.ids, now: this.now });
+    bound.listeners = this.listeners;
+    bound.deferred = pending;
+    return bound;
+  }
+
+  /** The notifications a bound ledger is holding back, if it is bound. */
+  get pending(): (() => void)[] | undefined {
+    return this.deferred;
   }
 
   async append(draft: AuditDraft): Promise<{ record: AuditRecord; duplicate: boolean }> {
@@ -92,9 +111,14 @@ export class PgAuditLedger implements AuditLedger {
         .where(eq(auditHeads.chain, record.chain));
       return { record, duplicate: false };
     });
-    if (!out.duplicate)
-      for (const l of this.listeners)
-        if (!l.chains || l.chains.includes(out.record.chain)) l.fn(structuredClone(out.record));
+    if (!out.duplicate) {
+      const notify = () => {
+        for (const l of this.listeners)
+          if (!l.chains || l.chains.includes(out.record.chain)) l.fn(structuredClone(out.record));
+      };
+      if (this.deferred) this.deferred.push(notify);
+      else notify();
+    }
     return out;
   }
 

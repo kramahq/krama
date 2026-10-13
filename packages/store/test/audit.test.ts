@@ -214,3 +214,69 @@ describe('audit ledger persistence', () => {
     }
   });
 });
+
+describe('the ledger inside a store transaction (M5.5)', () => {
+  const draft = (n: number): AuditDraft => ({
+    chain: 'control',
+    actor: { type: 'user', id: 'u1', role: 'operator' },
+    kind: 'run.created',
+    source: 'api',
+    sourceEventId: `tx-${n}`,
+    payload: { n },
+  });
+
+  it('commits with the change, and tells subscribers only after the commit', async () => {
+    const o = await track(openPglite());
+    const heard: number[] = [];
+    o.ledger.subscribe((r) => heard.push(r.seq));
+    let heardInside: number[] = [];
+    await o.store.transaction(async (tx) => {
+      await tx.ledger!.append(draft(1));
+      await tx.ledger!.append(draft(2));
+      heardInside = [...heard];
+    });
+    expect(heardInside).toEqual([]);
+    expect(heard).toEqual([1, 2]);
+    expect((await o.ledger.read('control')).map((r) => r.seq)).toEqual([1, 2]);
+    expect((await o.ledger.verify('control')).ok).toBe(true);
+  });
+
+  it('rolls back with the change: no record, no notification, and the chain is unbroken afterwards', async () => {
+    const o = await track(openPglite());
+    const heard: number[] = [];
+    o.ledger.subscribe((r) => heard.push(r.seq));
+    await o.ledger.append(draft(0));
+    await expect(
+      o.store.transaction(async (tx) => {
+        await tx.ledger!.append(draft(1));
+        throw new Error('the change failed');
+      }),
+    ).rejects.toThrow('the change failed');
+    expect(await o.ledger.read('control')).toHaveLength(1);
+    expect(heard).toEqual([1]);
+    const next = await o.ledger.append(draft(2));
+    expect(next.record.seq).toBe(2);
+    expect((await o.ledger.verify('control')).ok).toBe(true);
+  });
+
+  it('waits for the outermost commit when transactions nest, and a nested failure that is caught keeps the rest', async () => {
+    const o = await track(openPglite());
+    const heard: number[] = [];
+    o.ledger.subscribe((r) => heard.push(r.seq));
+    await o.store.transaction(async (tx) => {
+      await tx.ledger!.append(draft(1));
+      await tx.transaction(async (inner) => {
+        await inner.ledger!.append(draft(2));
+      });
+      expect(heard).toEqual([]);
+      await tx
+        .transaction(async (inner) => {
+          await inner.ledger!.append(draft(3));
+          throw new Error('inner failed');
+        })
+        .catch(() => undefined);
+    });
+    expect(heard).toEqual([1, 2]);
+    expect((await o.ledger.read('control')).map((r) => r.sourceEventId)).toEqual(['tx-1', 'tx-2']);
+  });
+});

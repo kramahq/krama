@@ -143,7 +143,8 @@ describe('what the event sink puts on the record', () => {
     );
     expect((await res.json()).status).toBe('parked');
     await new Promise((r) => setTimeout(r, 30));
-    const control = await t.s.p.ledger.read('control');
+    // The control chain also holds who created the run; this is about the one record for the event nobody owns.
+    const control = (await t.s.p.ledger.read('control')).filter((r) => r.kind === 'capture.gap');
     expect(control).toHaveLength(1);
     expect(control[0]).toMatchObject({
       kind: 'capture.gap',

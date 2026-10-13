@@ -42,6 +42,8 @@ export const actorRef = z.object({
   type: z.enum(['user', 'agent', 'system', 'schedule', 'orchestrator']),
   id: z.string(),
   name: z.string().optional(),
+  /** The highest role the actor held when it acted (recorded in the audit, not a grant). */
+  role: z.string().optional(),
 });
 export type ActorRef = z.infer<typeof actorRef>;
 

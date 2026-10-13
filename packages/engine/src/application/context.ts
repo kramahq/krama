@@ -79,13 +79,32 @@ export async function audit(
   subject: { type: string; id: string },
   detail?: Record<string, unknown>,
 ): Promise<void> {
-  await tx.audit.append({
+  const entry = {
     id: c.p.ids.next('aud'),
     at: nowIso(c),
     actor,
     action,
     subject,
     ...(detail ? { detail } : {}),
+  };
+  await tx.audit.append(entry);
+  // The same fact goes on the hash-chained control record, in the same transaction when the store can do that, so the
+  // record of who did what cannot be missing from a change that happened, or present for one that was rolled back.
+  const ledger = tx.ledger ?? c.p.ledger;
+  await ledger?.append({
+    chain: 'control',
+    actor: auditActorOf(actor),
+    kind: action,
+    source: actor.type === 'system' ? 'system' : 'api',
+    // The audit entry's id makes a retry of the same action write nothing twice.
+    sourceEventId: entry.id,
+    ...(subject.type === 'run' ? { runId: subject.id } : {}),
+    ...(subject.type === 'decision' ? { decisionId: subject.id } : {}),
+    payload: {
+      subject,
+      ...(actor.name ? { actorName: actor.name } : {}),
+      ...(detail ? { detail } : {}),
+    },
   });
 }
 
@@ -135,6 +154,7 @@ export const runEvent = (
 export const auditActorOf = (a: ActorRef): AuditActor => ({
   type: a.type === 'schedule' ? 'system' : a.type,
   id: a.id,
+  ...(a.role ? { role: a.role } : {}),
 });
 
 /**

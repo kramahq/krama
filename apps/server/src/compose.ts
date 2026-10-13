@@ -33,7 +33,7 @@ import {
   type AgentDirectory,
   type SubAgentsOptions,
 } from '@kramahq/orchestrator-mcp';
-import { openPglite, type OpenedStore } from '@kramahq/store';
+import { PgStore, openPglite, type OpenedStore } from '@kramahq/store';
 
 /** An agent definition together with its persona text (the contents of its `prompt.md`). */
 export interface DefinitionBundle {
@@ -133,7 +133,8 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     ...(o.resolveCommand ? { resolveCommand: o.resolveCommand } : {}),
   });
   const ports: Ports = {
-    store: db.store,
+    // With the audit record in its own database a store transaction cannot include it: those writes follow the change instead.
+    store: auditDb ? new PgStore(db.db) : db.store,
     events: db.events,
     artifacts: new FsArtifactStore({
       dir: join(o.home, 'artifacts'),

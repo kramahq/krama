@@ -35,11 +35,12 @@ export async function openPglite(
   await client.waitReady;
   const db = drizzlePglite(client, { schema }) as unknown as Db;
   const applied = await migrate(db);
+  const ledger = new PgAuditLedger(db);
   return {
-    store: new PgStore(db),
+    store: new PgStore(db, ledger),
     events: new PgEventLog(db, log),
     memory: new PgMemory(db),
-    ledger: new PgAuditLedger(db),
+    ledger,
     db,
     applied,
     close: () => client.close(),
@@ -54,11 +55,12 @@ export async function openPostgres(
   const pool = new pg.Pool({ connectionString });
   const db = drizzlePg(pool, { schema }) as unknown as Db;
   const applied = await migrate(db);
+  const ledger = new PgAuditLedger(db);
   return {
-    store: new PgStore(db),
+    store: new PgStore(db, ledger),
     events: new PgEventLog(db, log),
     memory: new PgMemory(db),
-    ledger: new PgAuditLedger(db),
+    ledger,
     db,
     applied,
     close: () => pool.end(),

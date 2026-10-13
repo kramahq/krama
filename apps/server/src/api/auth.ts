@@ -67,3 +67,7 @@ export function satisfies(p: Principal, perm: string): boolean {
   const has = Math.max(-1, ...p.roles.map(rank));
   return has >= Math.min(...need);
 }
+
+/** The highest role a principal holds, for the record of who acted (not for deciding anything). */
+export const topRole = (p: Principal): string | undefined =>
+  [...p.roles].sort((a, b) => rank(b) - rank(a))[0];
