@@ -1,5 +1,5 @@
 import type { AgentRef, GatewayEvent } from '@kramahq/engine';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   A2AGateway,
   EgressError,
@@ -56,12 +56,18 @@ describe('protocol version and discovery', () => {
 
   it('reuses the card between calls and reads it again after the TTL', async () => {
     const s = (await fake()).queue(done, done, done);
-    const gw = new A2AGateway({ cardTtlMs: 150 });
+    // A long lifetime, and the clock moved forward to pass it: waiting on real time made this depend on runner speed.
+    const gw = new A2AGateway({ cardTtlMs: 60_000 });
     await collect(gw.send(ref(s), { text: 'a' }));
     await collect(gw.send(ref(s), { text: 'b' }));
     expect(s.cardRequests).toHaveLength(1);
-    await new Promise((r) => setTimeout(r, 200));
-    await collect(gw.send(ref(s), { text: 'c' }));
+    const now = Date.now();
+    const later = vi.spyOn(Date, 'now').mockImplementation(() => now + 61_000);
+    try {
+      await collect(gw.send(ref(s), { text: 'c' }));
+    } finally {
+      later.mockRestore();
+    }
     expect(s.cardRequests).toHaveLength(2);
   });
 
