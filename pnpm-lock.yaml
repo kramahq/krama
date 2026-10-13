@@ -258,6 +258,15 @@ importers:
         specifier: ^4.10.2
         version: 4.10.2
 
+  packages/git:
+    dependencies:
+      '@kramahq/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@kramahq/engine':
+        specifier: workspace:*
+        version: link:../engine
+
   packages/memory: {}
 
   packages/orchestrator-mcp:

@@ -5,6 +5,7 @@ const adapters = [
   'artifacts-fs',
   'agents',
   'pack',
+  'git',
   'skills',
   'work-items',
   'scheduler',
