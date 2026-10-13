@@ -3,6 +3,7 @@ import { DomainError } from '../domain/errors.js';
 import type { DomainEvent } from '../domain/events.js';
 import { evaluate } from '../domain/evaluator-loop.js';
 import { checkPackInputs } from '../domain/pack-inputs.js';
+import { applyPlan, implicitPhase, validatePlan, type PlanPhase } from '../domain/plan.js';
 import { assertBackendAllowed, requiredGatesAfter } from '../domain/invariants.js';
 import { transitionPhase } from '../domain/phase-machine.js';
 import { transitionRun, type RunTrigger } from '../domain/run-machine.js';
@@ -20,13 +21,7 @@ import {
   transcribe,
   type Ctx,
 } from './context.js';
-import {
-  completeIfDone,
-  gateDecision,
-  reopenForLoop,
-  downstream,
-  startReadyPhases,
-} from './run-ops.js';
+import { finishRun, gateDecision, reopenForLoop, downstream, startReadyPhases } from './run-ops.js';
 
 /** The fields of a run a person can change (`PATCH /runs/{id}`). */
 export interface RunPatch {
@@ -116,7 +111,8 @@ export class RunService {
         createdAt: now,
         updatedAt: now,
         links: {},
-        phases: pack.methodology.phases.map((t) => ({
+        // A pack without a methodology has no phases of its own: one implicit phase until the orchestrator plans (D16).
+        phases: (pack.methodology?.phases ?? []).map((t) => ({
           id: t.id,
           label: t.label,
           ...(t.kind ? { kind: t.kind } : {}),
@@ -127,6 +123,7 @@ export class RunService {
           iteration: 0,
         })),
       };
+      if (run.phases?.length === 0) run.phases = [implicitPhase()];
       await tx.runs.put({
         run,
         loops: {},
@@ -172,6 +169,43 @@ export class RunService {
         runEvent(run, 'run.planned', { phases: (run.phases ?? []).map((p) => p.id) }),
         ...started,
       ];
+    });
+  }
+
+  /**
+   * The orchestrator declares (or revises) the run's phases (D16). The first plan replaces the implicit phase; a later one
+   * may add, drop or reorder phases that have not started but cannot rewrite those that have. Phases that are ready start
+   * at once, and any final approval already given no longer counts, because there may be new work to approve.
+   */
+  async setPlan(runId: string, plan: readonly PlanPhase[], actor: ActorRef = SYSTEM): Promise<Run> {
+    const { c } = this;
+    validatePlan(plan);
+    return this.mutate(runId, actor, async (rec, tx) => {
+      const run = rec.run;
+      if (run.status !== 'planning' && run.status !== 'running')
+        throw new DomainError(
+          'invalid_transition',
+          `The run is ${run.status}; a plan can only be set while it is planning or running`,
+        );
+      const pack = await c.p.packs.get(run.pack.id);
+      if (pack?.methodology)
+        throw new DomainError(
+          'invalid_option',
+          'This pack declares its own phases, so the plan cannot be changed',
+        );
+      run.phases = applyPlan(run.phases ?? [], plan);
+      delete rec.finalApproved;
+      const now = nowIso(c);
+      const events: DomainEvent[] = [
+        runEvent(run, 'run.planned', {
+          phases: run.phases.map((p) => p.id),
+          replanned: run.status === 'running',
+        }),
+      ];
+      if (run.status === 'running')
+        events.push(...startReadyPhases(run, now), ...(await finishRun(c, rec, tx, pack, now)));
+      await audit(c, tx, actor, 'run.planned', { type: 'run', id: runId }, { phases: plan.length });
+      return events;
     });
   }
 
@@ -284,7 +318,7 @@ export class RunService {
       const roles = new Map((run.phases ?? []).map((p) => [p.id, p.agentRoles]));
       const target = outcome.loopTarget ?? phaseId;
       const pack = await c.p.packs.get(run.pack.id);
-      const rule = pack?.methodology.evaluators.find(
+      const rule = pack?.methodology?.evaluators.find(
         (r) =>
           (roles.get(phaseId) ?? []).includes(r.evaluator) &&
           (roles.get(target) ?? []).includes(r.producer),
@@ -345,7 +379,9 @@ export class RunService {
     const run = rec.run;
     const phase = findPhase(run, phaseId);
     const pack = await c.p.packs.get(run.pack.id);
-    const gates = pack ? requiredGatesAfter(pack.methodology, phaseId, { mode: run.mode }) : [];
+    const gates = pack?.methodology
+      ? requiredGatesAfter(pack.methodology, phaseId, { mode: run.mode })
+      : [];
     const events: DomainEvent[] = [];
     if (gates.length > 0) {
       phase.status = transitionPhase(phase.status, 'await_decision');
@@ -370,7 +406,10 @@ export class RunService {
     phase.status = transitionPhase(phase.status, 'complete');
     phase.endedAt = nowIso(c);
     events.push(phaseEvent(run, 'phase.completed', phase));
-    events.push(...startReadyPhases(run, nowIso(c)), ...completeIfDone(run, nowIso(c)));
+    events.push(
+      ...startReadyPhases(run, nowIso(c)),
+      ...(await finishRun(c, rec, tx, pack, nowIso(c))),
+    );
     return events;
   }
 

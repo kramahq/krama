@@ -23,7 +23,7 @@ import {
   transcribe,
   type Ctx,
 } from './context.js';
-import { completeIfDone, reopenForLoop, startReadyPhases } from './run-ops.js';
+import { completeIfDone, finishRun, reopenForLoop, startReadyPhases } from './run-ops.js';
 
 export interface ResolveCommand {
   optionId: string;
@@ -317,14 +317,15 @@ export class DecisionService {
                   x.effects[x.decision.resolution.optionId] === 'advance_autopilot')
               )
                 approved.set(x.decision.title, true);
-            assertCanAdvance(pack.methodology, phase.id, { mode: run.mode }, approved);
+            if (pack.methodology)
+              assertCanAdvance(pack.methodology, phase.id, { mode: run.mode }, approved);
           }
           phase.status = transitionPhase(phase.status, 'approve');
           phase.endedAt = now;
           events.push(phaseEvent(run, 'phase.completed', phase));
           await resume();
           if (run.status === 'running')
-            events.push(...startReadyPhases(run, now), ...completeIfDone(run, now));
+            events.push(...startReadyPhases(run, now), ...(await finishRun(c, r, tx, pack, now)));
           return;
         }
       }
@@ -332,6 +333,12 @@ export class DecisionService {
     };
 
     switch (effect) {
+      case 'finalize':
+        // The person who must approve a review-mode run before it completes did so: it completes now.
+        r.finalApproved = true;
+        await resume();
+        if (run.status === 'running') events.push(...completeIfDone(run, now));
+        break;
       case 'advance_autopilot':
         run.mode = 'autopilot';
         await advance();
