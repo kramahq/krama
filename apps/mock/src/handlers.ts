@@ -260,7 +260,7 @@ export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<stri
         createdAt: now,
         updatedAt: now,
         links: {},
-        phases: pack.methodology.phases.map((t) => ({
+        phases: (pack.methodology?.phases ?? []).map((t) => ({
           id: t.id,
           label: t.label,
           ...(t.kind ? { kind: t.kind } : {}),
@@ -322,7 +322,7 @@ export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<stri
     estimateRun: (req) => {
       const pack = find(s.packs, req.body.packId, 'Pack');
       return {
-        phases: pack.methodology.phases.map((p) => ({
+        phases: (pack.methodology?.phases ?? []).map((p) => ({
           id: p.id,
           label: p.label,
           agentRoles: p.roles,
