@@ -1,5 +1,26 @@
 # @kramahq/orchestrator-mcp
 
+## 0.2.0
+
+### Minor Changes
+
+- c66ef1d: Work out what a graph pack will really run before accepting its run: the run now records the backend and model its orchestrator will start with, and the backend policy is checked for every agent Krama starts for it. A caller's orchestrator backend, model or definition override on a graph pack is refused with a clear error instead of being recorded and ignored.
+- 1a4d17f: Run a pack with no methodology. `methodology` and `roster` are now optional (deprecated). A run of such a pack has one implicit phase until the orchestrator declares phases with the new `set_plan` tool (it may revise phases that have not started). Loop-backs are capped by platform policy, and in review mode the engine raises one final approval before the run can complete. A graph pack now also runs with relay (`krama`) delegation: the orchestrator delegates to its direct agents by name.
+
+### Patch Changes
+
+- b4498c9: Generate Krama's own MCP entry in the shape each backend reads: `remote` for OpenCode, and a pre-approved tool mode for Codex so headless runs can call the governance tools. Both are routine calls back to the platform, not a person's approval.
+- Updated dependencies [720b872]
+- Updated dependencies [25ea47f]
+- Updated dependencies [c66ef1d]
+- Updated dependencies [1a4d17f]
+- Updated dependencies [5591c50]
+- Updated dependencies [3784a7b]
+- Updated dependencies [4bf5632]
+- Updated dependencies [3ffd71b]
+  - @kramahq/contract@0.3.0
+  - @kramahq/engine@0.4.0
+
 ## 0.1.2
 
 ### Patch Changes

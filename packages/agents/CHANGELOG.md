@@ -1,5 +1,23 @@
 # @kramahq/agents
 
+## 0.3.1
+
+### Patch Changes
+
+- 7e54834: Report the A2A versions the gateway really speaks (1.0, with the 0.3 compatibility fallback) in the capabilities response. Both read one exported list, and a test checks they agree.
+- bc1d7e5: Pass the secrets a pack binds by name to the agent it starts, even when the backend does not declare that variable (for example a token in the pack's own MCP server headers). A binding that cannot be resolved is now reported. Ambient variables that are not bound still do not reach the agent.
+- 80a8b0d: Pin built-in wrapper installation hints and doctor checks to the supported versions. Allow Codex's existing CLI login as an alternative to an API key, and support selecting the Codex CLI path in the gated real-wrapper smoke test.
+- Updated dependencies [720b872]
+- Updated dependencies [25ea47f]
+- Updated dependencies [c66ef1d]
+- Updated dependencies [1a4d17f]
+- Updated dependencies [5591c50]
+- Updated dependencies [3784a7b]
+- Updated dependencies [4bf5632]
+- Updated dependencies [3ffd71b]
+  - @kramahq/contract@0.3.0
+  - @kramahq/engine@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
