@@ -47,6 +47,28 @@ export function resetApi(): void {
       get: vi.fn().mockImplementation(async (id: string) => decision({ id })),
       resolve: vi.fn().mockResolvedValue(decision({ status: 'resolved' })),
     },
+    api: {
+      listBackends: vi.fn().mockResolvedValue(page([])),
+      listAgentDefinitions: vi.fn().mockResolvedValue(page([])),
+      getAgentDefinition: vi.fn(),
+      previewPack: vi.fn(),
+      previewPackUpdate: vi.fn(),
+      installPack: vi.fn(),
+      updatePack: vi.fn(),
+      listPackVersions: vi.fn().mockResolvedValue(page([])),
+      rollbackPack: vi.fn(),
+      disablePack: vi.fn(),
+      enablePack: vi.fn(),
+      uninstallPack: vi.fn(),
+      previewAgentDefinition: vi.fn(),
+      previewAgentDefinitionUpdate: vi.fn(),
+      installAgentDefinition: vi.fn(),
+      updateAgentDefinition: vi.fn(),
+      listAgentDefinitionVersions: vi.fn().mockResolvedValue(page([])),
+      rollbackAgentDefinition: vi.fn(),
+      uninstallAgentDefinition: vi.fn(),
+      getOperation: vi.fn(),
+    },
     events: vi
       .fn()
       .mockImplementation(

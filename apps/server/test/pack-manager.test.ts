@@ -196,6 +196,11 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
       status: 'installed',
       trust: 'untrusted',
       source: { sha: p.sha },
+      links: {
+        update: { href: '/api/v1/packs/pack_notes/update', method: 'POST' },
+        versions: { href: '/api/v1/packs/pack_notes/versions' },
+        uninstall: { href: '/api/v1/packs/pack_notes', method: 'DELETE' },
+      },
     });
     expect((await manager.get('pack_notes'))!.agents!['writer']).toBeDefined();
     expect((await manager.list()).map((x) => x.id)).toEqual(['pack_notes']);
@@ -571,6 +576,7 @@ describe.skipIf(!hasGit)('installing packs from git', { timeout: 120_000 }, () =
     const m = await t.open({ builtin: [builtin] });
     expect((await m.list()).map((p) => p.id)).toEqual(['pack_notes']);
     expect((await m.get('pack_notes'))!.version).toBe('9.9.9');
+    expect((await m.get('pack_notes'))!.links?.update).toBeUndefined();
     const p = await m.preview(t.src);
     await expect(
       m.install(

@@ -168,7 +168,7 @@ describe('flows', () => {
     expect(res.headers['content-range']).toMatch(/^bytes 0-9\//);
   });
 
-  it('install enforces consent for high-risk permissions', async () => {
+  it('install enforces consent for every requested permission', async () => {
     const op = (
       await mock.app.inject({
         method: 'POST',
@@ -177,18 +177,79 @@ describe('flows', () => {
       })
     ).json();
     expect(op.status).toBe('succeeded');
-    const preview = (await mock.app.inject({ url: `/api/v1/operations/${op.id}` })).json().result
-      .preview;
+    const preview = (await mock.app.inject({ url: `/api/v1/operations/${op.id}` })).json().result;
+    const missing = await mock.app.inject({
+      method: 'POST',
+      url: '/api/v1/packs',
+      payload: {
+        previewId: preview.previewId,
+        manifestDigest: preview.manifestDigest,
+        consent: { granted: [], declined: [] },
+      },
+    });
+    expect(missing.statusCode).toBe(422);
     const ok = await mock.app.inject({
       method: 'POST',
       url: '/api/v1/packs',
       payload: {
         previewId: preview.previewId,
         manifestDigest: preview.manifestDigest,
-        consent: { granted: ['n1', 's1'], declined: [] },
+        consent: { granted: preview.permissions.map((p: { id: string }) => p.id), declined: [] },
       },
     });
     expect(ok.statusCode).toBe(201);
+  });
+
+  it('supports sample agent consent, updates, history, rollback and removal', async () => {
+    const id = 'git-reviewer/default';
+    const path = `/api/v1/agent-definitions/${encodeURIComponent(id)}`;
+    const call = (url: string, payload: object) =>
+      mock.app.inject({ method: 'POST', url, payload });
+    const preview = async (url: string, payload: object) => {
+      const response = await call(url, payload);
+      expect(response.statusCode, response.body).toBe(202);
+      const operation = response.json();
+      return (await mock.app.inject({ url: `/api/v1/operations/${operation.id}` })).json().result;
+    };
+    const p = await preview('/api/v1/agent-definitions/preview', {
+      id,
+      source: { url: 'https://example.com/agents.git', ref: 'main', path: 'reviewer' },
+      secrets: { SERVICE_TOKEN: 'service-token' },
+    });
+    const review = (p: {
+      previewId: string;
+      manifestDigest: string;
+      permissions: { id: string }[];
+    }) => ({
+      previewId: p.previewId,
+      manifestDigest: p.manifestDigest,
+      consent: { granted: p.permissions.map((p) => p.id), declined: [] },
+    });
+    const bad = await call('/api/v1/agent-definitions', {
+      ...review(p),
+      manifestDigest: '0'.repeat(64),
+    });
+    expect(bad.statusCode).toBe(409);
+    const installed = await call('/api/v1/agent-definitions', review(p));
+    expect(installed.statusCode, installed.body).toBe(201);
+    expect(installed.json()).toMatchObject({
+      id,
+      backend: { secrets: { SERVICE_TOKEN: 'service-token' } },
+    });
+    const up = await preview(`${path}/update/preview`, { ref: 'v2' });
+    expect(up.diff.changed).not.toHaveLength(0);
+    const updated = await call(`${path}/update`, review(up));
+    expect(updated.statusCode, updated.body).toBe(200);
+    const versions = (await mock.app.inject({ url: `${path}/versions` })).json().items;
+    expect(versions.map((v: { action: string }) => v.action)).toEqual(['update', 'install']);
+    const restored = await call(`${path}/rollback`, {
+      sha: versions[1].sha,
+      digest: versions[1].digest,
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(restored.json().source.sha).toBe(p.sha);
+    expect((await mock.app.inject({ method: 'DELETE', url: path })).statusCode).toBe(204);
+    expect((await mock.app.inject({ url: path })).statusCode).toBe(404);
   });
 });
 

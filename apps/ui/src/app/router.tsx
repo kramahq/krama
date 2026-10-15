@@ -12,6 +12,7 @@ import { NotFound, RouteError } from '@/pages/errors';
 import { Placeholder } from '@/pages/placeholder';
 import { RunDetailPage, type RunTab } from '@/pages/run-detail';
 import { RunsPage } from '@/pages/runs';
+import { PacksPage, PackDetailPage, AgentsPage, AgentDetailPage } from '@/pages/library';
 import { Shell } from './shell';
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
@@ -81,26 +82,43 @@ const later = (path: string, title: string, sub: string, task: string, text: str
     ),
   });
 
+const catalogSearch = (s: Record<string, unknown>) => ({
+  ...given('q', s.q),
+  ...given('filter', s.filter),
+});
+const packsRoute = createRoute({
+  getParentRoute: () => root,
+  path: '/packs',
+  component: PacksPage,
+  validateSearch: catalogSearch,
+});
+const packDetailRoute = createRoute({
+  getParentRoute: () => root,
+  path: '/packs/$packId',
+  component: PackDetailPage,
+});
+const agentsRoute = createRoute({
+  getParentRoute: () => root,
+  path: '/agents',
+  component: AgentsPage,
+  validateSearch: catalogSearch,
+});
+const agentDetailRoute = createRoute({
+  getParentRoute: () => root,
+  path: '/agents/$definitionId',
+  component: AgentDetailPage,
+});
+
 const tree = root.addChildren([
   index,
   inboxRoute,
   runsRoute,
   newRunRoute,
   runRoute,
-  later(
-    '/packs',
-    'Packs',
-    'What your agents can do, and what each pack is allowed to touch',
-    'U4',
-    'The catalog, install consent (tools, folders outside the workspace, secrets, memory, backends) and update diffs.',
-  ),
-  later(
-    '/agents',
-    'Agents',
-    'The pool of agents your packs are built from',
-    'U4',
-    'Add an agent from a git URL, see what it declares, and register it.',
-  ),
+  packsRoute,
+  packDetailRoute,
+  agentsRoute,
+  agentDetailRoute,
   later(
     '/memory',
     'Memory',
