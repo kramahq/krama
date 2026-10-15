@@ -502,7 +502,9 @@ export class OrchestratorRunner implements RunExecutor {
         definition.backend.wrapper,
       );
       const persona = directory.systemPrompt(definition.id);
+      const baseConfig = directory.definitionConfig?.(definition);
       spec = {
+        ...(baseConfig ? { baseConfig } : {}),
         definition,
         workspace: { mode: 'shared', key: run.id },
         assignment: { runId: run.id },

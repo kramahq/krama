@@ -20,6 +20,7 @@ import { workspaceHandlers } from './workspaces.js';
 import { artifactHandlers } from './artifacts.js';
 import { auditHandlers } from './audit.js';
 import { packHandlers } from './packs.js';
+import { agentPoolHandlers } from './agent-pool.js';
 import { transcriptHandlers } from './transcript.js';
 import { catalogHandlers } from './catalog.js';
 import { ApiProblem, toProblem, validationProblem } from './problems.js';
@@ -93,6 +94,7 @@ export async function buildApi(o: ApiOptions): Promise<FastifyInstance> {
     ...catalogHandlers(),
     // After the catalogue's, so the manifest is the installed one's.
     ...packHandlers(),
+    ...agentPoolHandlers(),
     ...(o.handlers ?? {}),
   };
   const streams: StreamHandlers = events.streams;

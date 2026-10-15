@@ -241,17 +241,18 @@ function managed(
         'not_found',
         `Agent definition "${spec.definition}" (agents.${id}) not found`,
       );
-    return {
-      definition: {
-        ...def,
-        backend: {
-          ...def.backend,
-          ...(over.backend ? { wrapper: over.backend } : {}),
-          ...(over.model ? { model: over.model } : {}),
-        },
+    const definition: AgentDefinition = {
+      ...def,
+      backend: {
+        ...def.backend,
+        ...(over.backend ? { wrapper: over.backend } : {}),
+        ...(over.model ? { model: over.model } : {}),
       },
     };
+    const baseConfig = env.directory.definitionConfig?.(definition);
+    return { definition, ...(baseConfig ? { baseConfig } : {}) };
   }
+
   const path = `agents.${id}`;
   throw new DomainError(
     'invalid_graph',

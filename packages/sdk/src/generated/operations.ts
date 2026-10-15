@@ -830,6 +830,90 @@ export const OPERATIONS = {
     ifMatch: false,
     cut1: true,
   },
+  previewAgentDefinition: {
+    method: 'POST',
+    path: '/agent-definitions/preview',
+    tag: 'Agent definitions',
+    perm: 'author',
+    kind: 'json',
+    status: 202,
+    params: [],
+    idempotent: false,
+    ifMatch: false,
+    cut1: false,
+  },
+  installAgentDefinition: {
+    method: 'POST',
+    path: '/agent-definitions',
+    tag: 'Agent definitions',
+    perm: 'admin',
+    kind: 'json',
+    status: 201,
+    params: [],
+    idempotent: true,
+    ifMatch: false,
+    cut1: false,
+  },
+  previewAgentDefinitionUpdate: {
+    method: 'POST',
+    path: '/agent-definitions/{id}/update/preview',
+    tag: 'Agent definitions',
+    perm: 'admin',
+    kind: 'json',
+    status: 202,
+    params: ['id'],
+    idempotent: false,
+    ifMatch: false,
+    cut1: false,
+  },
+  updateAgentDefinition: {
+    method: 'POST',
+    path: '/agent-definitions/{id}/update',
+    tag: 'Agent definitions',
+    perm: 'admin',
+    kind: 'json',
+    status: 200,
+    params: ['id'],
+    idempotent: false,
+    ifMatch: false,
+    cut1: false,
+  },
+  rollbackAgentDefinition: {
+    method: 'POST',
+    path: '/agent-definitions/{id}/rollback',
+    tag: 'Agent definitions',
+    perm: 'admin',
+    kind: 'json',
+    status: 200,
+    params: ['id'],
+    idempotent: false,
+    ifMatch: false,
+    cut1: false,
+  },
+  listAgentDefinitionVersions: {
+    method: 'GET',
+    path: '/agent-definitions/{id}/versions',
+    tag: 'Agent definitions',
+    perm: 'viewer',
+    kind: 'json',
+    status: 200,
+    params: ['id'],
+    idempotent: false,
+    ifMatch: false,
+    cut1: false,
+  },
+  uninstallAgentDefinition: {
+    method: 'DELETE',
+    path: '/agent-definitions/{id}',
+    tag: 'Agent definitions',
+    perm: 'admin',
+    kind: 'empty',
+    status: 204,
+    params: ['id'],
+    idempotent: false,
+    ifMatch: false,
+    cut1: false,
+  },
   listMcpServers: {
     method: 'GET',
     path: '/mcp-servers',
@@ -5223,7 +5307,15 @@ export interface OperationTypes {
           }[];
         };
         capabilities: string[];
-        source: { type: 'pack' | 'local'; packId?: string; sha?: string };
+        source: {
+          type: 'git' | 'pack' | 'local';
+          packId?: string;
+          url?: string;
+          ref?: string;
+          path?: string;
+          sha?: string;
+          digest?: string;
+        };
         costHint?: { perMillionTokens?: { amount: number; currency: 'USD' } };
         links: {
           [key: string]: {
@@ -5266,7 +5358,15 @@ export interface OperationTypes {
         }[];
       };
       capabilities: string[];
-      source: { type: 'pack' | 'local'; packId?: string; sha?: string };
+      source: {
+        type: 'git' | 'pack' | 'local';
+        packId?: string;
+        url?: string;
+        ref?: string;
+        path?: string;
+        sha?: string;
+        digest?: string;
+      };
       costHint?: { perMillionTokens?: { amount: number; currency: 'USD' } };
       links: {
         [key: string]: {
@@ -5276,6 +5376,253 @@ export interface OperationTypes {
         };
       };
     };
+  };
+  /** POST /agent-definitions/preview: Preview a git-sourced agent */
+  previewAgentDefinition: {
+    params: undefined;
+    query: undefined;
+    body: {
+      id: string;
+      source: { url: string; ref?: string; path?: string };
+      secrets?: { [key: string]: string };
+    };
+    response: {
+      id: string;
+      type?: string;
+      status: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+      progress?: number;
+      message?: string;
+      result?: { [key: string]: unknown };
+      error?: {
+        type: string;
+        title: string;
+        status: number;
+        detail?: string;
+        code: string;
+        errors?: { field: string; message: string }[];
+        traceId?: string;
+      };
+      startedAt?: string;
+      endedAt?: string;
+      links: {
+        [key: string]: {
+          href: string;
+          method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+          title?: string;
+        };
+      };
+    };
+  };
+  /** POST /agent-definitions: Install an agent after consent */
+  installAgentDefinition: {
+    params: undefined;
+    query: undefined;
+    body: {
+      previewId: string;
+      manifestDigest: string;
+      consent: { granted: string[]; declined: string[] };
+    };
+    response: {
+      id: string;
+      role: string;
+      variant: string;
+      name: string;
+      description: string;
+      backend: {
+        wrapper: string;
+        model?: string;
+        options?: { [key: string]: unknown };
+        common?: { [key: string]: unknown };
+        secrets?: { [key: string]: string };
+      };
+      skills: { id: string; sha?: string }[];
+      mcpServers: string[];
+      permissions: { tools: { [key: string]: 'allow' | 'ask' | 'off' } };
+      memory: {
+        enabled: boolean;
+        scopes: {
+          scope: 'agent' | 'role' | 'project' | 'pack' | 'org' | 'orchestrator';
+          access: 'read' | 'propose' | 'write';
+        }[];
+      };
+      capabilities: string[];
+      source: {
+        type: 'git' | 'pack' | 'local';
+        packId?: string;
+        url?: string;
+        ref?: string;
+        path?: string;
+        sha?: string;
+        digest?: string;
+      };
+      costHint?: { perMillionTokens?: { amount: number; currency: 'USD' } };
+      links: {
+        [key: string]: {
+          href: string;
+          method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+          title?: string;
+        };
+      };
+    };
+  };
+  /** POST /agent-definitions/{id}/update/preview: Preview an agent update */
+  previewAgentDefinitionUpdate: {
+    params: { id: string };
+    query: undefined;
+    body: { ref?: string; secrets?: { [key: string]: string } };
+    response: {
+      id: string;
+      type?: string;
+      status: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+      progress?: number;
+      message?: string;
+      result?: { [key: string]: unknown };
+      error?: {
+        type: string;
+        title: string;
+        status: number;
+        detail?: string;
+        code: string;
+        errors?: { field: string; message: string }[];
+        traceId?: string;
+      };
+      startedAt?: string;
+      endedAt?: string;
+      links: {
+        [key: string]: {
+          href: string;
+          method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+          title?: string;
+        };
+      };
+    };
+  };
+  /** POST /agent-definitions/{id}/update: Update an agent after consent */
+  updateAgentDefinition: {
+    params: { id: string };
+    query: undefined;
+    body: {
+      previewId: string;
+      manifestDigest: string;
+      consent: { granted: string[]; declined: string[] };
+    };
+    response: {
+      id: string;
+      role: string;
+      variant: string;
+      name: string;
+      description: string;
+      backend: {
+        wrapper: string;
+        model?: string;
+        options?: { [key: string]: unknown };
+        common?: { [key: string]: unknown };
+        secrets?: { [key: string]: string };
+      };
+      skills: { id: string; sha?: string }[];
+      mcpServers: string[];
+      permissions: { tools: { [key: string]: 'allow' | 'ask' | 'off' } };
+      memory: {
+        enabled: boolean;
+        scopes: {
+          scope: 'agent' | 'role' | 'project' | 'pack' | 'org' | 'orchestrator';
+          access: 'read' | 'propose' | 'write';
+        }[];
+      };
+      capabilities: string[];
+      source: {
+        type: 'git' | 'pack' | 'local';
+        packId?: string;
+        url?: string;
+        ref?: string;
+        path?: string;
+        sha?: string;
+        digest?: string;
+      };
+      costHint?: { perMillionTokens?: { amount: number; currency: 'USD' } };
+      links: {
+        [key: string]: {
+          href: string;
+          method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+          title?: string;
+        };
+      };
+    };
+  };
+  /** POST /agent-definitions/{id}/rollback: Restore an installed agent version */
+  rollbackAgentDefinition: {
+    params: { id: string };
+    query: undefined;
+    body: { sha: string; digest?: string };
+    response: {
+      id: string;
+      role: string;
+      variant: string;
+      name: string;
+      description: string;
+      backend: {
+        wrapper: string;
+        model?: string;
+        options?: { [key: string]: unknown };
+        common?: { [key: string]: unknown };
+        secrets?: { [key: string]: string };
+      };
+      skills: { id: string; sha?: string }[];
+      mcpServers: string[];
+      permissions: { tools: { [key: string]: 'allow' | 'ask' | 'off' } };
+      memory: {
+        enabled: boolean;
+        scopes: {
+          scope: 'agent' | 'role' | 'project' | 'pack' | 'org' | 'orchestrator';
+          access: 'read' | 'propose' | 'write';
+        }[];
+      };
+      capabilities: string[];
+      source: {
+        type: 'git' | 'pack' | 'local';
+        packId?: string;
+        url?: string;
+        ref?: string;
+        path?: string;
+        sha?: string;
+        digest?: string;
+      };
+      costHint?: { perMillionTokens?: { amount: number; currency: 'USD' } };
+      links: {
+        [key: string]: {
+          href: string;
+          method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+          title?: string;
+        };
+      };
+    };
+  };
+  /** GET /agent-definitions/{id}/versions: Installed agent history */
+  listAgentDefinitionVersions: {
+    params: { id: string };
+    query: undefined;
+    body: undefined;
+    response: {
+      items: {
+        sha: string;
+        digest: string;
+        at: string;
+        by: string;
+        action: 'install' | 'update' | 'rollback';
+        source: { url: string; ref?: string; path?: string };
+        consent: { granted: string[]; declined: string[] };
+        current: boolean;
+      }[];
+      nextCursor?: string;
+      total?: number;
+    };
+  };
+  /** DELETE /agent-definitions/{id}: Uninstall an agent */
+  uninstallAgentDefinition: {
+    params: { id: string };
+    query: undefined;
+    body: undefined;
+    response: void;
   };
   /** GET /mcp-servers: MCP catalog and connectivity */
   listMcpServers: {
@@ -5777,7 +6124,15 @@ export interface OperationTypes {
             }[];
           };
           capabilities: string[];
-          source: { type: 'pack' | 'local'; packId?: string; sha?: string };
+          source: {
+            type: 'git' | 'pack' | 'local';
+            packId?: string;
+            url?: string;
+            ref?: string;
+            path?: string;
+            sha?: string;
+            digest?: string;
+          };
           costHint?: { perMillionTokens?: { amount: number; currency: 'USD' } };
           links: {
             [key: string]: {

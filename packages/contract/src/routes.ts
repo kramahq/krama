@@ -21,6 +21,9 @@ import {
 import {
   agent,
   agentDefinition,
+  agentPreviewRequest,
+  agentVersion,
+  agentUpdatePreviewRequest,
   agentMatchRequest,
   agentMatchResult,
   installPack,
@@ -523,6 +526,87 @@ const asyncOp: Opts = { status: 202, response: operation };
     'Definition (id = role/variant)',
     'viewer',
     { response: agentDefinition },
+  );
+  d(
+    'POST',
+    '/agent-definitions/preview',
+    'previewAgentDefinition',
+    'Preview a git-sourced agent',
+    'author',
+    {
+      body: agentPreviewRequest,
+      ...asyncOp,
+      ...later(),
+    },
+  );
+  d(
+    'POST',
+    '/agent-definitions',
+    'installAgentDefinition',
+    'Install an agent after consent',
+    'admin',
+    {
+      body: installPack,
+      response: agentDefinition,
+      status: 201,
+      idempotent: true,
+      ...later(),
+    },
+  );
+  d(
+    'POST',
+    '/agent-definitions/{id}/update/preview',
+    'previewAgentDefinitionUpdate',
+    'Preview an agent update',
+    'admin',
+    {
+      body: agentUpdatePreviewRequest.optional(),
+      ...asyncOp,
+      ...later(),
+    },
+  );
+  d(
+    'POST',
+    '/agent-definitions/{id}/update',
+    'updateAgentDefinition',
+    'Update an agent after consent',
+    'admin',
+    {
+      body: installPack,
+      response: agentDefinition,
+      ...later(),
+    },
+  );
+  d(
+    'POST',
+    '/agent-definitions/{id}/rollback',
+    'rollbackAgentDefinition',
+    'Restore an installed agent version',
+    'admin',
+    {
+      body: z.object({ sha: z.string().regex(/^[0-9a-f]{40}$/), digest: z.string().optional() }),
+      response: agentDefinition,
+      ...later(),
+    },
+  );
+  d(
+    'GET',
+    '/agent-definitions/{id}/versions',
+    'listAgentDefinitionVersions',
+    'Installed agent history',
+    'viewer',
+    {
+      response: page(agentVersion),
+      ...later(),
+    },
+  );
+  d(
+    'DELETE',
+    '/agent-definitions/{id}',
+    'uninstallAgentDefinition',
+    'Uninstall an agent',
+    'admin',
+    { status: 204, ...later() },
   );
   d('GET', '/mcp-servers', 'listMcpServers', 'MCP catalog and connectivity', 'viewer', {
     response: genericPage,

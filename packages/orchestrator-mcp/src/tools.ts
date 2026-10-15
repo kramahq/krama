@@ -24,6 +24,8 @@ export interface AgentDirectory {
   /** Persona text for a definition (contents of `prompt.md`). */
   systemPrompt(definitionId: string): string;
   backendUsable(backend: string): boolean;
+  /** Original wrapper config of a Git-installed definition, with paths resolved at its pinned commit. */
+  definitionConfig?(definition: AgentDefinition): { json: Record<string, unknown> } | undefined;
   /** MCP servers and environment to inject for a spawned agent (e.g. the pack's tools). */
   extras?(
     def: AgentDefinition,

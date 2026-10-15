@@ -43,14 +43,17 @@ export async function ensureWorker(
       return started;
     }
     const extras = env.directory.extras?.(resolved.definition, run.id);
+    const definition =
+      resolved.backend === resolved.definition.backend.wrapper
+        ? resolved.definition
+        : {
+            ...resolved.definition,
+            backend: { ...resolved.definition.backend, wrapper: resolved.backend },
+          };
+    const baseConfig = env.directory.definitionConfig?.(definition);
     const spawned = await runtime.spawn({
-      definition:
-        resolved.backend === resolved.definition.backend.wrapper
-          ? resolved.definition
-          : {
-              ...resolved.definition,
-              backend: { ...resolved.definition.backend, wrapper: resolved.backend },
-            },
+      definition,
+      ...(baseConfig ? { baseConfig } : {}),
       workspace: { mode: 'shared', key: run.id },
       assignment,
       systemPrompt: env.directory.systemPrompt(resolved.definition.id),

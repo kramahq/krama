@@ -8,7 +8,12 @@ import {
   type SendMessage,
 } from '@kramahq/engine';
 import { FakeAgentRuntime, createFakePorts, type FakePorts } from '@kramahq/engine/testing';
-import { AgentEventCollector, OrchestratorMcp, OrchestratorRunner } from '../src/index.js';
+import {
+  AgentEventCollector,
+  OrchestratorMcp,
+  OrchestratorRunner,
+  type AgentDirectory,
+} from '../src/index.js';
 import { call, connect, def, pack } from './rig.js';
 
 export const user = { type: 'user' as const, id: 'u1', name: 'U1' };
@@ -32,6 +37,7 @@ export async function system(
   packs: Pack[] = [pack()],
   withCollector = false,
   agentFiles?: (pack: Pack, agentId: string) => { config: Record<string, unknown> } | undefined,
+  definitionConfig?: AgentDirectory['definitionConfig'],
 ): Promise<System> {
   const base = shared ?? createFakePorts(packs);
   const p: FakePorts = shared ? { ...base, agents: new FakeAgentRuntime() } : base;
@@ -47,6 +53,7 @@ export async function system(
     systemPrompt: (id: string) => (id === 'orchestrator/default' ? '' : ''),
     backendUsable: () => true,
     ...(agentFiles ? { agentFiles } : {}),
+    ...(definitionConfig ? { definitionConfig } : {}),
   };
   const errors: unknown[] = [];
   const mcp = new OrchestratorMcp({ engine, ports: p, directory, onError: (e) => errors.push(e) });

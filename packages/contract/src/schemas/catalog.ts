@@ -258,9 +258,13 @@ export const agentDefinition = z.object({
   }),
   capabilities: z.array(z.string()),
   source: z.object({
-    type: z.enum(['pack', 'local']),
+    type: z.enum(['git', 'pack', 'local']),
     packId: id('pack').optional(),
+    url: z.string().optional(),
+    ref: z.string().optional(),
+    path: z.string().optional(),
     sha: z.string().optional(),
+    digest: z.string().optional(),
   }),
   costHint: z.object({ perMillionTokens: money.optional() }).optional(),
   links,
@@ -379,3 +383,46 @@ export type PhaseTemplate = z.infer<typeof phaseTemplate>;
 export type GateRule = z.infer<typeof gateRule>;
 export type EvaluatorRule = z.infer<typeof evaluatorRule>;
 export type RosterEntry = z.infer<typeof rosterEntry>;
+
+// ---- Standalone agent installation ------------------------------------------
+
+export const agentPoolId = z.string().regex(/^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/);
+export const agentPreviewRequest = z.object({
+  id: agentPoolId,
+  source: packPreviewRequest.shape.source.extend({
+    path: z
+      .string()
+      .refine(
+        (p) =>
+          !p.includes('\\') &&
+          !p.includes('\0') &&
+          !/^(?:[a-zA-Z]:|\/)/.test(p) &&
+          !p.split('/').includes('..'),
+        'Use a relative Git path without ..',
+      )
+      .optional(),
+  }),
+  secrets: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string().min(1)).default({}),
+});
+export const agentUpdatePreviewRequest = z.object({
+  ref: z.string().optional(),
+  secrets: agentPreviewRequest.shape.secrets.optional(),
+});
+export const agentPreview = packPreview
+  .omit({ manifest: true, engineCompatible: true, skills: true, definitions: true })
+  .extend({
+    definition: agentDefinition.optional(),
+    declaredSubAgents: z.array(z.object({ name: z.string(), agentCardUrl: z.string() })),
+  });
+export type AgentPreview = z.infer<typeof agentPreview>;
+export type AgentPreviewRequest = z.infer<typeof agentPreviewRequest>;
+export const agentVersion = z.object({
+  sha: z.string(),
+  digest: z.string(),
+  at: iso,
+  by: z.string(),
+  action: z.enum(['install', 'update', 'rollback']),
+  source: packPreviewRequest.shape.source,
+  consent: installPack.shape.consent,
+  current: z.boolean(),
+});
