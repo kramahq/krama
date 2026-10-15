@@ -324,12 +324,7 @@ export class PackManager implements PackRepository {
     let diff: PackDiff | undefined;
     if (against) {
       const cur = await this.loadInstalled(against);
-      diff = diffLoads(
-        cur.load,
-        load,
-        await permissionSurface(cur.load, this.o.backends),
-        surface,
-      );
+      diff = diffLoads(cur.load, load, await permissionSurface(cur.load, this.o.backends), surface);
     }
     const previewId = `prev_${randomBytes(9).toString('base64url')}`;
     const expiresAt = this.now().getTime() + (this.o.previewTtlMs ?? 30 * 60_000);
