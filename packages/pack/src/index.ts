@@ -7,3 +7,5 @@ export { packFile, parsePackText, type PackFile, type AgentEntry } from './pack-
 export const PACKAGE_NAME = '@kramahq/pack';
 export { toPack, engineCompatible, type InstallInfo } from './to-pack.js';
 export { permissionSurface, secretRefs, diffLoads, type PackDiff } from './surface.js';
+
+export { loadAgentDir, type AgentLoad } from './load.js';

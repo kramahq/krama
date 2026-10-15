@@ -1,5 +1,5 @@
-import { readFile, stat } from 'node:fs/promises';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { readFile, realpath, stat } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { BackendDescriptor } from '@kramahq/contract';
 import { canonicalJson, sha256Hex, validateAgentGraph, type BackendCatalog } from '@kramahq/engine';
 import { parse as parseYaml } from 'yaml';
@@ -212,6 +212,94 @@ export async function loadPackText(
   };
 }
 
+/** A standalone wrapper-config directory, using the same validation as a pack member. */
+export interface AgentLoad {
+  ok: boolean;
+  issues: PackIssue[];
+  agent: ResolvedAgent;
+  digest?: string;
+}
+
+export async function loadAgentDir(
+  path: string,
+  env: PackLoadEnv,
+  secrets: Record<string, string> = {},
+  sourceRoot?: string,
+): Promise<AgentLoad> {
+  const issues: PackIssue[] = [];
+  const configFile = path.endsWith('.json') ? path : join(path, 'config.json');
+  const dir = path.endsWith('.json') ? dirname(path) : path;
+  const agent: ResolvedAgent = {
+    id: 'agent',
+    kind: 'config',
+    role: 'agent',
+    dir,
+    secrets,
+    subAgents: [],
+  };
+  const insideSource = async (target: string): Promise<boolean> => {
+    const base = await realpath(sourceRoot ?? dir);
+    const actual = await realpath(target);
+    const rel = relative(base, actual);
+    return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+  };
+  try {
+    if (!(await insideSource(configFile))) throw new Error('outside source');
+    const config: unknown = JSON.parse(await readFile(configFile, 'utf8'));
+    if (!isObject(config)) throw new Error('not an object');
+    agent.config = config;
+  } catch {
+    issues.push(
+      error(
+        'agent_config_unreadable',
+        'config.json',
+        'The source must contain a readable config.json object',
+      ),
+    );
+  }
+  if (agent.config) {
+    const memory = agent.config.memory;
+    if (isObject(memory)) {
+      const files: [string, unknown][] = [['memory.instructions', memory.instructions]];
+      if (Array.isArray(memory.skills))
+        memory.skills.forEach((skill, i) => {
+          files.push([`memory.skills[${i}]`, skill]);
+          if (typeof skill === 'string')
+            files.push([`memory.skills[${i}].SKILL.md`, join(skill, 'SKILL.md')]);
+        });
+      for (const [field, value] of files)
+        if (typeof value === 'string') {
+          const valid = await insideSource(resolve(dir, value)).catch(() => true); // Missing files get their normal validation error below.
+          if (!valid)
+            issues.push(
+              error(
+                'path_outside_source',
+                `config.${field}`,
+                'Referenced files must stay inside the pinned Git checkout',
+              ),
+            );
+        }
+    }
+  }
+  if (agent.config)
+    await checkConfig(
+      'agent',
+      agent,
+      { isOrchestrator: false, referenced: false },
+      env,
+      new Set([...KRAMA_VARS, ...(env.providedVars ?? [])]),
+      issues,
+      'config',
+    );
+  const ok = !hasErrors(issues);
+  return {
+    ok,
+    agent,
+    issues,
+    ...(ok ? { digest: sha256Hex(canonicalJson({ config: agent.config, secrets })) } : {}),
+  };
+}
+
 function reach(file: PackFile): Set<string> {
   const seen = new Set<string>();
   const visit = (id: string): void => {
@@ -367,9 +455,11 @@ async function checkConfig(
   env: PackLoadEnv,
   providedVars: ReadonlySet<string>,
   issues: PackIssue[],
+  basePath?: string,
 ): Promise<void> {
   const config = agent.config!;
-  const base = agent.kind === 'git' ? `agents.${id}.git(config)` : `agents.${id}.config`;
+  const base =
+    basePath ?? (agent.kind === 'git' ? `agents.${id}.git(config)` : `agents.${id}.config`);
   issues.push(...sectionIssues(config, base));
   issues.push(...secretValues(config, base));
 
@@ -403,6 +493,14 @@ async function checkConfig(
         error('cannot_orchestrate', `agents.${id}`, `${descriptor.id} cannot be an orchestrator`),
       );
     const section = config[descriptor.providerKey];
+    if (!isObject(section))
+      issues.push(
+        error(
+          'provider_config',
+          `${base}.${descriptor.providerKey}`,
+          'The provider configuration must be a JSON object',
+        ),
+      );
     if (env.checkProviderConfig && isObject(section))
       for (const p of env.checkProviderConfig(descriptor, section))
         issues.push(

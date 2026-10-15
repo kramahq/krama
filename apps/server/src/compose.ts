@@ -36,6 +36,7 @@ import {
 } from '@kramahq/orchestrator-mcp';
 import { PgStore, openPglite, type OpenedStore } from '@kramahq/store';
 import { PackManager } from './packs/index.js';
+import { AgentPool } from './agents/pool.js';
 
 /** An agent definition together with its persona text (the contents of its `prompt.md`). */
 export interface DefinitionBundle {
@@ -87,6 +88,8 @@ export interface Krama {
   runtime: ProcessAgentRuntime;
   /** The packs on this machine: those shipped with this build and those installed from git. */
   packs: PackManager;
+  /** Git-sourced reusable agent definitions, registered without starting a process. */
+  agentPool: AgentPool;
   /** Other people's repositories: mirrors, pinned work trees and the lock file. */
   sources: Sources;
   backends: BackendRegistry;
@@ -217,12 +220,59 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     backends,
     agents: runtime,
   };
+  const agentPool = await AgentPool.open({
+    dir: join(o.home, 'agent-pool'),
+    sources,
+    backends,
+    secrets,
+    checkProviderConfig: (d, section) =>
+      validateOptions(d, section, { workspaceProvided: true }).map((i) => ({
+        path: i.path,
+        message: i.message,
+      })),
+    allowedBackends: o.policy?.allowedBackends,
+    trusted: o.sources?.trusted,
+    builtin: o.definitions.map((b) => b.definition),
+    audit: control,
+    inUse: async (definition) => {
+      if (runtime.list().some((a) => a.definitionId === definition.id && a.status !== 'stopped'))
+        return true;
+      let cursor: string | undefined;
+      do {
+        const page = await ports.store.runs.list({
+          status: ['planning', 'running', 'paused', 'awaiting_decision', 'blocked', 'interrupted'],
+          limit: 100,
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const {
+          value: { run },
+        } of page.items) {
+          if (run.orchestrator.definitionId === definition.id) return true;
+          const pack = await ports.packs.get(run.pack.id, run.pack.sha);
+          if (Object.values(pack?.agents ?? {}).some((a) => a.definition === definition.id))
+            return true;
+          // Legacy rosters can select definitions later, when a worker first starts.
+          if (
+            pack?.roster?.some(
+              (r) =>
+                r.select.definitionId === definition.id ||
+                (!r.select.definitionId && r.role === definition.role),
+            )
+          )
+            return true;
+        }
+        cursor = page.nextCursor;
+      } while (cursor);
+      return false;
+    },
+  });
   const engine = createEngine(ports, o.policy ?? {});
 
   const byId = new Map(o.definitions.map((b) => [b.definition.id, b]));
   const directory: AgentDirectory = {
-    definitions: () => o.definitions.map((b) => b.definition),
+    definitions: () => agentPool.list(),
     systemPrompt: (id) => byId.get(id)?.systemPrompt ?? '',
+    definitionConfig: (definition) => agentPool.config(definition),
     backendUsable: (b) => backends.get(b) !== undefined,
     agentFiles: (pack, agentId) => packManager.agentFiles(pack, agentId),
   };
@@ -266,9 +316,15 @@ export async function createKrama(o: KramaOptions): Promise<Krama> {
     runner,
     runtime,
     packs: packManager,
+    agentPool,
     sources,
     backends,
-    definitions: o.definitions,
+    get definitions() {
+      return agentPool.list().map((definition) => ({
+        definition,
+        systemPrompt: byId.get(definition.id)?.systemPrompt ?? '',
+      }));
+    },
     workspaceRoot: join(o.home, 'agents-data', 'workspaces'),
     async close() {
       if (closed) return;
