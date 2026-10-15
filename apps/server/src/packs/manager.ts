@@ -253,6 +253,14 @@ export class PackManager implements PackRepository {
       permissions: await permissionSurface(load, this.o.backends),
       engineVersion: this.o.engineVersion,
     });
+    const path = `/api/v1/packs/${encodeURIComponent(e.id)}`;
+    pack.links = {
+      ...pack.links,
+      self: { href: path },
+      update: { href: `${path}/update`, method: 'POST' },
+      versions: { href: `${path}/versions` },
+      uninstall: { href: path, method: 'DELETE' },
+    };
     this.loaded.set(key, pack);
     return pack;
   }

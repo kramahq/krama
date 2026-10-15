@@ -2,8 +2,9 @@ import type { ActivityItem, Agent, Decision, Pack, Run, RunCost, Spend } from '@
 import type { FastifyReply } from 'fastify';
 import type { EventBus } from './bus.js';
 import { controlRun, resolveDecision, touchRun } from './effects.js';
-import { ProblemError, notFound } from './problems.js';
+import { notFound } from './problems.js';
 import type { MockState } from './state.js';
+import { mockCatalog } from './catalog.js';
 
 interface Req {
   params: Record<string, string>;
@@ -450,66 +451,6 @@ export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<stri
           (!q.status || csv(q.status).includes(p.status)) && textMatch(q.q, p.name, p.description),
       ),
     getPack: (req) => find(s.packs, req.params.id!, 'Pack'),
-    previewPack: (req) => {
-      const url = String(req.body?.source?.url ?? '');
-      const pack =
-        s.packs.find((p) => p.source.url === url) ?? s.packs.find((p) => p.status === 'available');
-      if (!pack) throw new ProblemError('not_found', 'No pack at that source');
-      const preview = {
-        previewId: `pv_${Date.now().toString(36)}`,
-        manifestDigest: `sha256:${pack.source.sha}`,
-        sha: pack.source.sha,
-        manifest: pack,
-        trust: pack.trust,
-        engineCompatible: true,
-        issues: [],
-        permissions: pack.permissions,
-        secretsToBind: pack.requirements.secrets.map((ref) => ({ ref, bound: false })),
-        skills: [],
-        definitions: [],
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-      };
-      bus.emit(
-        'pack.previewed',
-        { type: 'pack', id: pack.id },
-        { packId: pack.id, sha: pack.source.sha },
-      );
-      return pendingOp('pack.preview', { preview });
-    },
-    installPack: (req, reply) => {
-      const pack = s.packs.find((p) => `sha256:${p.source.sha}` === req.body.manifestDigest);
-      if (!pack)
-        throw new ProblemError(
-          'not_found',
-          'Unknown preview',
-          'manifestDigest does not match any previewed pack',
-        );
-      const declined = new Set<string>(req.body.consent.declined);
-      const bad = pack.permissions.filter(
-        (p) => p.risk === 'high' && !(req.body.consent.granted as string[]).includes(p.id),
-      );
-      if (bad.length || pack.permissions.some((p) => declined.has(p.id) && p.risk === 'high')) {
-        throw new ProblemError(
-          'consent_incomplete',
-          'Required permissions were declined',
-          undefined,
-          bad.map((p) => ({
-            field: `consent.${p.id}`,
-            message: `${p.kind} ${p.subject} is required`,
-          })),
-        );
-      }
-      pack.status = 'installed';
-      pack.installedAt = new Date().toISOString();
-      bus.emit(
-        'pack.installed',
-        { type: 'pack', id: pack.id },
-        { packId: pack.id, sha: pack.source.sha },
-      );
-      emitAudit('pack.installed', { type: 'pack', id: pack.id });
-      reply.code(201);
-      return pack;
-    },
     getPackManifest: (req) => find(s.packs, req.params.id!, 'Pack'),
     listPackRuns: (req) =>
       page(
@@ -767,5 +708,6 @@ export function buildHandlers({ state: s, bus, autoProgress }: Ctx): Record<stri
         allowed: b.wrapper !== 'a2a-copilot',
       })),
     }),
+    ...mockCatalog(s, pendingOp, emitAudit),
   };
 }
